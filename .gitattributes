@@ -1,0 +1,7 @@
+# WSLのgitとWindowsのgitを両方使うため、改行はLFで固定する。
+# これがないと autocrlf の違いで、触っていないファイルが差分として出てくる。
+* text=auto eol=lf
+
+*.png binary
+*.ico binary
+*.icns binary
