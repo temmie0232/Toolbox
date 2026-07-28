@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { registerFlush } from '../store'
 import type { Recording } from '../types'
 
 /**
@@ -88,8 +89,13 @@ export function useRecording(
     return () => clearInterval(timer)
   }, [status])
 
+  const startingRef = useRef(false)
+
   const start = useCallback(async () => {
-    if (recorderRef.current) return
+    // awaitを挟むので、印は「マイクを取りに行く前」に立てる。
+    // 立てるのが後だと、二度押しで録音機が2つ動いて同じファイルに書き込む
+    if (recorderRef.current || startingRef.current) return
+    startingRef.current = true
     setError('')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO_CONSTRAINTS })
@@ -98,7 +104,9 @@ export function useRecording(
         ...(mimeType ? { mimeType } : {}),
         audioBitsPerSecond: AUDIO_BITS_PER_SECOND,
       })
-      const fileName = `${meetingId}.webm`
+      // 録り直しのたびに別ファイルにする。同じ名前に追記すると
+      // 2つの録音が1本に繋がり、頭出しの位置が全部ずれる
+      const fileName = `${meetingId}-${Date.now()}.webm`
 
       recorder.ondataavailable = (event) => {
         if (event.data.size === 0) return
@@ -121,66 +129,91 @@ export function useRecording(
       setError(
         `録音を開始できませんでした: ${e instanceof Error ? e.message : String(e)}(マイクの使用が許可されているか確認してください)`,
       )
+    } finally {
+      startingRef.current = false
     }
   }, [meetingId])
+
+  // 画面を離れるときにも同じ後始末をしたいので、refに置いて参照を固定する
+  const onFinishedRef = useRef(onFinished)
+  onFinishedRef.current = onFinished
 
   const stop = useCallback(async () => {
     const recorder = recorderRef.current
     if (!recorder) return
+    recorderRef.current = null
     setStatus('stopping')
     const durationMs = Date.now() - startedAtRef.current
 
-    await new Promise<void>((resolve) => {
-      recorder.onstop = () => resolve()
-      recorder.stop()
-    })
+    try {
+      if (recorder.state !== 'inactive') {
+        await new Promise<void>((resolve) => {
+          recorder.onstop = () => resolve()
+          recorder.stop()
+        })
+      }
+    } catch {
+      // 既に止まっていた場合。ここで諦めると保存されないので先へ進む
+    }
     streamRef.current?.getTracks().forEach((track) => track.stop())
     // 最後の断片が書き終わるまで待つ
     await writeChainRef.current.catch(() => undefined)
 
-    recorderRef.current = null
     streamRef.current = null
     setStatus('idle')
-    onFinished({
+    onFinishedRef.current({
       fileName: fileNameRef.current,
       startedAt: new Date(startedAtRef.current).toISOString(),
       durationMs,
       mimeType: recorder.mimeType || 'audio/webm',
     })
-  }, [onFinished])
+  }, [])
 
-  // 画面を離れるときに録音が生きていたら、止めて保存する
+  // 画面を離れるときに録音が生きていたら、止めて「録音あり」を必ず記録する。
+  // ここで記録し損ねると、音声だけがフォルダに残って辿れなくなる
   useEffect(() => {
     return () => {
-      if (recorderRef.current) {
-        recorderRef.current.stop()
-        streamRef.current?.getTracks().forEach((track) => track.stop())
-      }
+      if (recorderRef.current) void stop()
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
     }
-  }, [])
+  }, [stop])
+
+  // ウィンドウを閉じる・トレイから終了するときにも録音を締める
+  useEffect(() => registerFlush(async () => {
+    if (recorderRef.current) await stop()
+  }), [stop])
+
+  // 読み込みが二重に走らないようにする。走らせると使われないURLが漏れ、
+  // src の差し替えで再生位置も飛ぶ
+  const loadingRef = useRef<Promise<void> | null>(null)
 
   /** 録音ファイルを読み込んで再生できる状態にする */
   const ensureAudio = useCallback(async (): Promise<HTMLAudioElement | null> => {
     if (!recording) return null
+    if (loadingRef.current) await loadingRef.current
     if (!objectUrlRef.current) {
       setLoadingAudio(true)
-      try {
-        const bytes = await invoke<ArrayBuffer | number[]>('read_recording', {
-          fileName: recording.fileName,
-        })
-        const blob = new Blob([bytes instanceof ArrayBuffer ? bytes : new Uint8Array(bytes)], {
-          type: recording.mimeType,
-        })
-        const url = URL.createObjectURL(blob)
-        objectUrlRef.current = url
-        setAudioUrl(url)
-      } catch (e) {
-        setError(`録音を読み込めませんでした: ${e instanceof Error ? e.message : String(e)}`)
-        return null
-      } finally {
-        setLoadingAudio(false)
-      }
+      const load = (async () => {
+        try {
+          const bytes = await invoke<ArrayBuffer | number[]>('read_recording', {
+            fileName: recording.fileName,
+          })
+          const blob = new Blob([bytes instanceof ArrayBuffer ? bytes : new Uint8Array(bytes)], {
+            type: recording.mimeType,
+          })
+          const url = URL.createObjectURL(blob)
+          objectUrlRef.current = url
+          setAudioUrl(url)
+        } catch (e) {
+          setError(`録音を読み込めませんでした: ${e instanceof Error ? e.message : String(e)}`)
+        } finally {
+          setLoadingAudio(false)
+        }
+      })()
+      loadingRef.current = load
+      await load
+      loadingRef.current = null
+      if (!objectUrlRef.current) return null
     }
     return audioRef.current
   }, [recording])

@@ -17,9 +17,15 @@ export function InlineText({ value, onCommit, placeholder, className, ariaLabel 
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
   const inputRef = useRef<HTMLInputElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const wasEditing = useRef(false)
 
   useEffect(() => {
     if (editing) inputRef.current?.focus()
+    // 編集を抜けたらフォーカスをここへ戻す。body に落ちると、
+    // 次に打った1文字が画面切替のショートカットとして拾われてしまう
+    else if (wasEditing.current) buttonRef.current?.focus()
+    wasEditing.current = editing
   }, [editing])
 
   // 編集していない間は、外からの変更をそのまま映す
@@ -36,9 +42,11 @@ export function InlineText({ value, onCommit, placeholder, className, ariaLabel 
   if (!editing) {
     return (
       <button
+        ref={buttonRef}
         type="button"
+        // Tabで来ただけでは編集に入らない(戻したフォーカスで編集が再開してしまうため)。
+        // Enter か Space、クリックで入る
         onClick={() => setEditing(true)}
-        onFocus={() => setEditing(true)}
         className={`w-full rounded px-1 py-0.5 text-left hover:bg-neutral-100 ${
           value ? '' : 'text-neutral-400'
         } ${className ?? ''}`}

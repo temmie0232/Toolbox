@@ -7,7 +7,6 @@ import {
   type Brainstorm,
   type Meeting,
   type Memo,
-  type MemoType,
   type MinuteBlock,
   type MinuteKind,
   type Task,
@@ -189,34 +188,36 @@ export function updateTaskWith(
 }
 
 export function removeTask(id: string): Promise<void> {
-  // 紐付いていたメモは消さず、紐付けだけ外す
-  return commit(({ tasks, memos }) => ({
+  // 紐付いていたメモや議事録のTODOは消さず、紐付けだけ外す。
+  // 外し忘れると、そのTODOは「タスクを開く」が死んだまま二度と変換できなくなる
+  return commit(({ tasks, memos, meetings }) => ({
     tasks: tasks.filter((t) => t.id !== id),
     memos: memos.map((m) => (m.taskId === id ? { ...m, taskId: undefined } : m)),
+    meetings: meetings.map((meeting) =>
+      meeting.blocks.some((b) => b.taskId === id)
+        ? {
+            ...meeting,
+            blocks: meeting.blocks.map((b) => (b.taskId === id ? { ...b, taskId: undefined } : b)),
+          }
+        : meeting,
+    ),
   }))
 }
 
 // ---- メモ ----
 
-export type NewMemoInput = {
-  type: MemoType
-  taskId?: string
-  fact?: string
-  interpretation?: string
-  action?: string
-  body?: string
-}
+/**
+ * Memo から id と日時だけを外した形にしておく。
+ * 項目を足したときに、ここで黙って落ちることがないようにするため。
+ */
+export type NewMemoInput = Omit<Memo, 'id' | 'createdAt' | 'updatedAt'>
 
 export async function createMemo(input: NewMemoInput): Promise<Memo> {
   const timestamp = now()
   const memo: Memo = {
+    ...input,
     id: newId(),
     taskId: input.taskId || undefined,
-    type: input.type,
-    fact: input.fact,
-    interpretation: input.interpretation,
-    action: input.action,
-    body: input.body,
     createdAt: timestamp,
     updatedAt: timestamp,
   }
@@ -309,11 +310,25 @@ export async function removeMeeting(id: string): Promise<void> {
  * 議事録のTODOをタスクに変換する。
  * 会議で受け取った仕事も、結局は4つの箱を埋めるところから始まるため。
  */
+/** 連打で二重に作らないための印。作り終えるまで同じ対象を受け付けない */
+const inFlight = new Set<string>()
+
 export async function convertTodoToTask(meetingId: string, blockId: string): Promise<Task | null> {
   const meeting = state.meetings.find((m) => m.id === meetingId)
   const block = meeting?.blocks.find((b) => b.id === blockId)
   if (!meeting || !block || block.taskId) return null
+  if (inFlight.has(blockId)) return null
+  inFlight.add(blockId)
+  try {
+    return await convertTodoToTaskInner(meeting, block)
+  } finally {
+    inFlight.delete(blockId)
+  }
+}
 
+async function convertTodoToTaskInner(meeting: Meeting, block: MinuteBlock): Promise<Task> {
+  const meetingId = meeting.id
+  const blockId = block.id
   const task = await createTask({
     title: block.text,
     purpose: `${meeting.title || '会議'}(${new Date(meeting.startedAt).toLocaleDateString('ja-JP')})で決まったTODO`,
@@ -383,22 +398,30 @@ export function removeBrainstorm(id: string): Promise<void> {
 }
 
 /** 出したカードのまとまりを、そのままメモとして残す */
-export function brainGroupToMemo(
+export async function brainGroupToMemo(
   brainstormId: string,
   group: string,
   taskId?: string,
 ): Promise<Memo | null> {
   const brainstorm = state.brainstorms.find((b) => b.id === brainstormId)
-  if (!brainstorm) return Promise.resolve(null)
+  if (!brainstorm) return null
   const cards = brainstorm.cards.filter((c) => (c.group ?? '') === group)
-  if (cards.length === 0) return Promise.resolve(null)
-  return createMemo({
-    type: 'free',
-    taskId,
-    body: [`【${group || '未分類'}】${brainstorm.theme}`, ...cards.map((c) => `・${c.text}`)].join(
-      '\n',
-    ),
-  })
+  if (cards.length === 0) return null
+  // 連打で同じ内容のメモが増えないようにする
+  const key = `${brainstormId}:${group}`
+  if (inFlight.has(key)) return null
+  inFlight.add(key)
+  try {
+    return await createMemo({
+      type: 'free',
+      taskId,
+      body: [`【${group || '未分類'}】${brainstorm.theme}`, ...cards.map((c) => `・${c.text}`)].join(
+        '\n',
+      ),
+    })
+  } finally {
+    inFlight.delete(key)
+  }
 }
 
 // ---- バックアップ(F5)----

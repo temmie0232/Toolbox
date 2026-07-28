@@ -1,8 +1,8 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Field } from '../components/Field'
-import { useSaveShortcut, useShortcuts } from '../lib/useShortcuts'
-import { createMeeting } from '../store'
+import { useDiscardGuard, useSaveShortcut, useShortcuts } from '../lib/useShortcuts'
+import { createMeeting, registerDraftGuard } from '../store'
 
 /**
  * 議事録の入口。会議が始まる瞬間に開くので、聞かれるのは2つだけ。
@@ -29,7 +29,15 @@ export function MeetingNew() {
   }, [saving, title, participants, navigate])
 
   useSaveShortcut(() => void start())
-  const shortcuts = useMemo(() => ({ Escape: () => navigate('/meetings') }), [navigate])
+
+  const dirty = Boolean(title || participants)
+  const dirtyRef = useRef(false)
+  dirtyRef.current = dirty
+  useEffect(() => registerDraftGuard(() => dirtyRef.current), [])
+
+  const leave = useCallback(() => navigate('/meetings'), [navigate])
+  const { armed, onEscape, disarm } = useDiscardGuard(dirty, leave)
+  const shortcuts = useMemo(() => ({ Escape: onEscape }), [onEscape])
   useShortcuts(shortcuts)
 
   return (
@@ -63,11 +71,20 @@ export function MeetingNew() {
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
+      {armed && (
+        <p className="text-sm text-amber-700">
+          書きかけがあります。破棄するならもう一度 <kbd>Esc</kbd>。
+          <button type="button" className="ml-2 underline" onClick={disarm}>
+            編集を続ける
+          </button>
+        </p>
+      )}
+
       <div className="flex items-center gap-3 pt-2">
         <button type="submit" className="btn-primary" disabled={saving}>
           始める <kbd className="border-blue-500 bg-blue-500 text-blue-50">Ctrl+Enter</kbd>
         </button>
-        <button type="button" className="btn-ghost" onClick={() => navigate('/meetings')}>
+        <button type="button" className="btn-ghost" onClick={onEscape}>
           取消 <kbd>Esc</kbd>
         </button>
       </div>

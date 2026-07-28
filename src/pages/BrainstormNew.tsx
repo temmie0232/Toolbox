@@ -1,8 +1,8 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Field } from '../components/Field'
-import { useSaveShortcut, useShortcuts } from '../lib/useShortcuts'
-import { createBrainstorm } from '../store'
+import { useDiscardGuard, useSaveShortcut, useShortcuts } from '../lib/useShortcuts'
+import { createBrainstorm, registerDraftGuard } from '../store'
 
 const PRESETS = [3, 5, 10, 15]
 
@@ -27,7 +27,14 @@ export function BrainstormNew() {
   }, [saving, theme, limitMinutes, navigate])
 
   useSaveShortcut(() => void start())
-  const shortcuts = useMemo(() => ({ Escape: () => navigate('/brainstorms') }), [navigate])
+
+  const dirtyRef = useRef(false)
+  dirtyRef.current = Boolean(theme)
+  useEffect(() => registerDraftGuard(() => dirtyRef.current), [])
+
+  const leave = useCallback(() => navigate('/brainstorms'), [navigate])
+  const { armed, onEscape, disarm } = useDiscardGuard(Boolean(theme), leave)
+  const shortcuts = useMemo(() => ({ Escape: onEscape }), [onEscape])
   useShortcuts(shortcuts)
 
   return (
@@ -71,11 +78,20 @@ export function BrainstormNew() {
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
+      {armed && (
+        <p className="text-sm text-amber-700">
+          書きかけがあります。破棄するならもう一度 <kbd>Esc</kbd>。
+          <button type="button" className="ml-2 underline" onClick={disarm}>
+            編集を続ける
+          </button>
+        </p>
+      )}
+
       <div className="flex items-center gap-3 pt-2">
         <button type="submit" className="btn-primary" disabled={saving}>
           始める <kbd className="border-blue-500 bg-blue-500 text-blue-50">Ctrl+Enter</kbd>
         </button>
-        <button type="button" className="btn-ghost" onClick={() => navigate('/brainstorms')}>
+        <button type="button" className="btn-ghost" onClick={onEscape}>
           取消 <kbd>Esc</kbd>
         </button>
       </div>

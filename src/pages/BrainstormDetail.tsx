@@ -13,6 +13,53 @@ import {
 } from '../store'
 import type { Brainstorm } from '../types'
 
+/**
+ * グループ名の入力。1文字ごとに書き込むとデータファイル全体を毎回書き直すことになるので、
+ * 手を止めた(離れた/Enterした)ときにだけ確定する。
+ */
+function GroupInput({ value, onCommit }: { value: string; onCommit: (value: string) => void }) {
+  const [draft, setDraft] = useState(value)
+  const [editing, setEditing] = useState(false)
+
+  useEffect(() => {
+    if (!editing) setDraft(value)
+  }, [value, editing])
+
+  const commit = () => {
+    setEditing(false)
+    const next = draft.trim()
+    if (next !== value) onCommit(next)
+  }
+
+  return (
+    <input
+      className="w-40 shrink-0 rounded border border-neutral-300 px-2 py-1 text-xs"
+      value={draft}
+      list="brain-groups"
+      placeholder="グループ名"
+      aria-label="グループ名"
+      onFocus={() => setEditing(true)}
+      onChange={(e) => {
+        setEditing(true)
+        setDraft(e.target.value)
+      }}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+          e.preventDefault()
+          commit()
+        } else if (e.key === 'Escape') {
+          e.stopPropagation()
+          if (!e.nativeEvent.isComposing) {
+            setDraft(value)
+            setEditing(false)
+          }
+        }
+      }}
+    />
+  )
+}
+
 function formatClock(ms: number): string {
   const total = Math.max(0, Math.ceil(ms / 1000))
   const m = Math.floor(total / 60)
@@ -59,17 +106,24 @@ function BrainstormBody({ brainstorm }: { brainstorm: Brainstorm }) {
     }
   }, [])
 
-  // 残り時間。開始していない間は動かさない
+  // 残り時間。開始していない間は動かさない。0になったら止める(回し続ける意味がない)
   useEffect(() => {
     if (!brainstorm.startedAt) {
       setRemainMs(null)
       return
     }
     const endAt = new Date(brainstorm.startedAt).getTime() + brainstorm.limitMinutes * 60_000
-    const tick = () => setRemainMs(endAt - Date.now())
+    let timer: ReturnType<typeof setInterval> | undefined
+    const tick = () => {
+      const remain = endAt - Date.now()
+      setRemainMs(remain)
+      if (remain <= 0 && timer) clearInterval(timer)
+    }
     tick()
-    const timer = setInterval(tick, 500)
-    return () => clearInterval(timer)
+    if (endAt - Date.now() > 0) timer = setInterval(tick, 500)
+    return () => {
+      if (timer) clearInterval(timer)
+    }
   }, [brainstorm.startedAt, brainstorm.limitMinutes])
 
   const timeUp = remainMs !== null && remainMs <= 0
@@ -163,6 +217,11 @@ function BrainstormBody({ brainstorm }: { brainstorm: Brainstorm }) {
                   void add()
                   return
                 }
+                // 変換をEscで取り消しただけのときに、入力まで消さない
+                if (e.key === 'Escape' && e.nativeEvent.isComposing) {
+                  e.stopPropagation()
+                  return
+                }
                 if (e.key === 'Escape' && text) {
                   e.stopPropagation()
                   setText('')
@@ -215,17 +274,11 @@ function BrainstormBody({ brainstorm }: { brainstorm: Brainstorm }) {
             {brainstorm.cards.map((card) => (
               <li key={card.id} className="flex items-center gap-2">
                 <span className="min-w-0 flex-1 truncate text-sm">{card.text}</span>
-                <input
-                  className="w-40 shrink-0 rounded border border-neutral-300 px-2 py-1 text-xs"
+                <GroupInput
                   value={card.group ?? ''}
-                  list="brain-groups"
-                  placeholder="グループ名"
-                  aria-label="グループ名"
-                  onChange={(e) =>
+                  onCommit={(v) =>
                     void run(() =>
-                      updateBrainCard(brainstorm.id, card.id, {
-                        group: e.target.value || undefined,
-                      }),
+                      updateBrainCard(brainstorm.id, card.id, { group: v || undefined }),
                     )
                   }
                 />

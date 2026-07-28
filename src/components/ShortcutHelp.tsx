@@ -59,8 +59,16 @@ const GROUPS: Group[] = [
     title: '議事録',
     items: [
       { keys: ['Enter'], label: '入力中の行を確定して追加' },
-      { keys: ['Ctrl', '1〜3'], label: '決定 / TODO / 論点 を切替' },
+      { keys: ['Ctrl', '1〜3'], label: '決定 / TODO / 論点 を切替(入力欄で)' },
       { keys: ['Ctrl', 'E'], label: '録音の開始 / 停止' },
+      { keys: ['a'], label: '入力欄へ戻る' },
+      { keys: ['Esc'], label: '入力を消す → もう一度で一覧へ' },
+    ],
+  },
+  {
+    title: 'ブレスト',
+    items: [
+      { keys: ['Enter'], label: 'カードを追加' },
       { keys: ['a'], label: '入力欄へ戻る' },
       { keys: ['Esc'], label: '入力を消す → もう一度で一覧へ' },
     ],

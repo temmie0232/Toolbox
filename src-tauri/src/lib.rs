@@ -141,13 +141,18 @@ fn read_text_file(path: String) -> Result<String, String> {
 
 // ---- 録音 ----
 
-/// 録音ファイルの置き場。data.json と同じフォルダの下に置く
+/// 録音ファイルの置き場。data.json と同じフォルダの下に置く。
+/// データファイルと同じく、開発ビルドは別フォルダを使う
 fn recordings_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
         .app_data_dir()
         .map_err(|e| format!("保存先フォルダを取得できませんでした: {e}"))?
-        .join("recordings");
+        .join(if cfg!(debug_assertions) {
+            "recordings.dev"
+        } else {
+            "recordings"
+        });
     fs::create_dir_all(&dir).map_err(|e| format!("録音フォルダを作成できませんでした: {e}"))?;
     Ok(dir)
 }

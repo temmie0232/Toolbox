@@ -119,7 +119,10 @@ export function Settings() {
       <section className="space-y-2">
         <h2 className="text-sm font-semibold text-neutral-900">バックアップ</h2>
         <p className="text-xs text-neutral-500">
-          全データを1つのJSONファイルとして保存します。復元手段はこのファイルだけです。
+          タスク・メモ・議事録・ブレストを1つのJSONファイルとして保存します。復元手段はこのファイルだけです。
+          <br />
+          <strong>録音した音声はJSONに含まれません。</strong>
+          必要なら「保存先のフォルダを開く」から recordings フォルダごとコピーしてください。
         </p>
         <div className="flex gap-2">
           <button type="button" className="btn-primary" onClick={() => void onExport()}>

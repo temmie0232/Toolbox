@@ -7,6 +7,7 @@ import { useShortcuts } from '../lib/useShortcuts'
 import {
   addMinuteBlock,
   convertTodoToTask,
+  registerDraftGuard,
   removeMeeting,
   removeMinuteBlock,
   updateMeetingWith,
@@ -95,13 +96,27 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [rec, meeting.recording])
 
+  // 録音中は画面を離れさせない。離れると録音が切れて、
+  // 録り直しになった分は元の音声と繋がらなくなる
+  const recordingRef = useRef(false)
+  recordingRef.current = rec.status === 'recording'
+  useEffect(() => registerDraftGuard(() => recordingRef.current), [])
+
+  const leave = useCallback(() => {
+    if (recordingRef.current) {
+      setError('録音中です。Ctrl+E で停止してから移動してください。')
+      return
+    }
+    navigate('/meetings')
+  }, [navigate])
+
   const shortcuts = useMemo(
     () => ({
-      Escape: () => navigate('/meetings'),
-      h: () => navigate('/meetings'),
+      Escape: leave,
+      h: leave,
       a: () => captureRef.current?.focus(),
     }),
-    [navigate],
+    [leave],
   )
   useShortcuts(shortcuts)
 
@@ -240,6 +255,11 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
             if (e.key === 'Enter' && !e.nativeEvent.isComposing && !e.ctrlKey && !e.metaKey) {
               e.preventDefault()
               void add()
+              return
+            }
+            // 変換をEscで取り消しただけのときに、入力まで消さない
+            if (e.key === 'Escape' && e.nativeEvent.isComposing) {
+              e.stopPropagation()
               return
             }
             // 打っている途中のEscで画面ごと抜けない。まず入力を消すだけにする
