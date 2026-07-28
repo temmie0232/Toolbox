@@ -1,0 +1,60 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans:
+    'Yu Gothic UI', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', 'Meiryo', system-ui, sans-serif;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    color-scheme: light;
+  }
+
+  body {
+    @apply bg-white text-neutral-900;
+    /* デスクトップアプリなので、UIの文字は選択できなくてよい(入力欄は下で戻す) */
+    user-select: none;
+  }
+
+  input,
+  textarea,
+  select {
+    user-select: text;
+  }
+
+  /* キーボード操作が主用途なので、フォーカスははっきり見せる */
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-blue-600;
+  }
+
+  kbd {
+    @apply rounded border border-neutral-300 bg-neutral-50 px-1.5 py-0.5 font-mono text-[11px] text-neutral-600;
+  }
+}
+
+@layer components {
+  /* 箱(入力欄)の共通見た目 */
+  .box-input {
+    @apply w-full rounded-md border border-neutral-300 px-3 py-2 text-[15px] leading-relaxed
+      placeholder:text-neutral-400 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium
+      text-white transition-colors hover:bg-blue-700
+      disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center gap-1.5 rounded-md border border-neutral-300 px-3 py-1.5
+      text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50
+      disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center gap-1.5 rounded-md border border-red-200 px-3 py-1.5
+      text-sm font-medium text-red-700 transition-colors hover:bg-red-50
+      disabled:cursor-not-allowed disabled:opacity-50;
+  }
+}
