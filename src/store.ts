@@ -299,6 +299,17 @@ export function removeMinuteBlock(meetingId: string, blockId: string): Promise<v
   }))
 }
 
+/**
+ * 録り直しのとき用。録音を外し、行に記録した時刻も消す。
+ * 前の音声を指したままにすると、頭出しが見当違いの場所へ飛ぶ
+ */
+export function clearMeetingRecording(id: string): Promise<void> {
+  return updateMeetingWith(id, (m) => ({
+    recording: undefined,
+    blocks: m.blocks.map((b) => ({ ...b, offsetMs: undefined })),
+  }))
+}
+
 export async function removeMeeting(id: string): Promise<void> {
   // 議事録を消したら録音ファイルも残さない(消し忘れると容量だけ食う)
   const fileName = state.meetings.find((m) => m.id === id)?.recording?.fileName

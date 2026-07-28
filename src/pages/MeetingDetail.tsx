@@ -6,6 +6,7 @@ import { REWIND_SECONDS, formatOffset, useRecording } from '../lib/useRecording'
 import { useShortcuts } from '../lib/useShortcuts'
 import {
   addMinuteBlock,
+  clearMeetingRecording,
   convertTodoToTask,
   registerDraftGuard,
   removeMeeting,
@@ -71,7 +72,17 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
       void run(() => updateMeetingWith(meeting.id, () => ({ recording }))),
     [meeting.id, run],
   )
-  const rec = useRecording(meeting.id, meeting.recording, onRecordingFinished)
+  const onRecordingDiscarded = useCallback(
+    () => clearMeetingRecording(meeting.id),
+    [meeting.id],
+  )
+  const rec = useRecording(
+    meeting.id,
+    meeting.recording,
+    onRecordingFinished,
+    onRecordingDiscarded,
+  )
+  const [confirmRedo, setConfirmRedo] = useState(false)
 
   const add = async () => {
     const value = text.trim()
@@ -83,13 +94,25 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
     if (ok) setText('')
   }
 
-  /** Ctrl+E で録音の開始・停止(入力欄に手を置いたまま操作できる) */
+  /**
+   * 入力欄に手を置いたまま録音を操作できるようにする。
+   * Ctrl+E: 開始 / 一時停止・再開、Ctrl+Shift+E: 確定、Ctrl+Shift+M: マイクの入切
+   */
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() === 'e' && e.ctrlKey && !e.altKey && !e.shiftKey) {
+      if (!e.ctrlKey || e.altKey) return
+      const key = e.key.toLowerCase()
+      if (key === 'e' && !e.shiftKey) {
         e.preventDefault()
-        if (rec.status === 'recording') void rec.stop()
+        if (rec.status === 'recording') rec.pause()
+        else if (rec.status === 'paused') rec.resume()
         else if (rec.status === 'idle' && !meeting.recording) void rec.start()
+      } else if (key === 'e' && e.shiftKey) {
+        e.preventDefault()
+        if (rec.status === 'recording' || rec.status === 'paused') void rec.finish()
+      } else if (key === 'm' && e.shiftKey) {
+        e.preventDefault()
+        rec.toggleMic()
       }
     }
     window.addEventListener('keydown', onKeyDown)
@@ -162,15 +185,82 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
         逐語メモから解放されることが目的
       */}
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-neutral-200 px-3 py-2">
-        {rec.status === 'recording' ? (
+        {rec.status === 'recording' || rec.status === 'paused' ? (
           <>
-            <span className="flex items-center gap-2 text-sm font-medium text-red-600">
-              <span className="size-2 animate-pulse rounded-full bg-red-600" />
-              録音中 {formatOffset(rec.elapsedMs)}
+            <span
+              className={`flex items-center gap-2 text-sm font-medium ${
+                rec.status === 'recording' ? 'text-red-600' : 'text-neutral-500'
+              }`}
+            >
+              <span
+                className={`size-2 rounded-full ${
+                  rec.status === 'recording' ? 'animate-pulse bg-red-600' : 'bg-neutral-400'
+                }`}
+              />
+              {rec.status === 'recording' ? '録音中' : '一時停止'} {formatOffset(rec.elapsedMs)}
             </span>
-            <button type="button" className="btn-ghost" onClick={() => void rec.stop()}>
-              停止 <kbd>Ctrl+E</kbd>
+
+            <span className="text-xs text-neutral-500">
+              システム音声 {rec.systemAudio ? 'あり' : 'なし'}
+            </span>
+
+            {/* マイクは録音中でも切れる。自分の声を入れたくない場面があるため */}
+            <button
+              type="button"
+              onClick={rec.toggleMic}
+              className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                rec.micOn
+                  ? 'bg-neutral-900 text-white'
+                  : 'border border-neutral-300 text-neutral-500 hover:bg-neutral-50'
+              }`}
+              aria-pressed={rec.micOn}
+            >
+              マイク {rec.micOn ? 'ON' : 'OFF'}
+              <kbd
+                className={rec.micOn ? 'border-neutral-700 bg-neutral-800 text-neutral-300' : ''}
+              >
+                Ctrl+Shift+M
+              </kbd>
             </button>
+
+            {rec.status === 'recording' ? (
+              <button type="button" className="btn-ghost" onClick={rec.pause}>
+                一時停止 <kbd>Ctrl+E</kbd>
+              </button>
+            ) : (
+              <button type="button" className="btn-ghost" onClick={rec.resume}>
+                再開 <kbd>Ctrl+E</kbd>
+              </button>
+            )}
+            <button type="button" className="btn-primary" onClick={() => void rec.finish()}>
+              録音を終える <kbd className="border-blue-500 bg-blue-500 text-blue-50">Ctrl+Shift+E</kbd>
+            </button>
+            {confirmRedo ? (
+              <span className="flex items-center gap-2">
+                <span className="text-xs text-neutral-600">ここまでの音声を捨てる?</span>
+                <button
+                  type="button"
+                  className="btn-danger"
+                  onClick={() => {
+                    setConfirmRedo(false)
+                    void rec.discard()
+                  }}
+                >
+                  捨てる
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => setConfirmRedo(false)}
+                >
+                  やめる
+                </button>
+              </span>
+            ) : (
+              <button type="button" className="btn-danger" onClick={() => setConfirmRedo(true)}>
+                やり直す
+              </button>
+            )}
           </>
         ) : meeting.recording ? (
           <>
@@ -197,6 +287,33 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
                 {rec.loadingAudio ? '読み込み中…' : '再生の準備'}
               </button>
             )}
+            {confirmRedo ? (
+              <span className="flex shrink-0 items-center gap-2">
+                <span className="text-xs text-neutral-600">録音を消して録り直す?</span>
+                <button
+                  type="button"
+                  className="btn-danger"
+                  onClick={() => {
+                    setConfirmRedo(false)
+                    void rec.discard()
+                  }}
+                >
+                  消す
+                </button>
+                <button type="button" className="btn-ghost" onClick={() => setConfirmRedo(false)}>
+                  やめる
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="btn-danger shrink-0"
+                onClick={() => setConfirmRedo(true)}
+                title="録音を消して、行に記録した時刻も外す"
+              >
+                やり直す
+              </button>
+            )}
           </>
         ) : (
           <>
@@ -209,7 +326,8 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
               録音を開始 <kbd>Ctrl+E</kbd>
             </button>
             <span className="text-xs text-neutral-400">
-              録音していれば、書いた行から{REWIND_SECONDS}秒前を聞き返せる
+              システム音声(相手の声)を常に録り、マイクは途中で切れる。書いた行から
+              {REWIND_SECONDS}秒前を聞き返せる
             </span>
           </>
         )}

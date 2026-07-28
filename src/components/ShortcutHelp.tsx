@@ -60,7 +60,9 @@ const GROUPS: Group[] = [
     items: [
       { keys: ['Enter'], label: '入力中の行を確定して追加' },
       { keys: ['Ctrl', '1〜3'], label: '決定 / TODO / 論点 を切替(入力欄で)' },
-      { keys: ['Ctrl', 'E'], label: '録音の開始 / 停止' },
+      { keys: ['Ctrl', 'E'], label: '録音の開始 / 一時停止・再開' },
+      { keys: ['Ctrl', 'Shift', 'E'], label: '録音を終える(確定)' },
+      { keys: ['Ctrl', 'Shift', 'M'], label: 'マイクの入 / 切(録音中も可)' },
       { keys: ['a'], label: '入力欄へ戻る' },
       { keys: ['Esc'], label: '入力を消す → もう一度で一覧へ' },
     ],

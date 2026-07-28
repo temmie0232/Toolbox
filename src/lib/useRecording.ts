@@ -9,10 +9,9 @@ import type { Recording } from '../types'
  */
 export const REWIND_SECONDS = 15
 
-/** 軽さ優先。ただし将来の文字起こし(16kHzモノラルが標準入力)に困らない下限は守る */
-const AUDIO_CONSTRAINTS: MediaTrackConstraints = {
+/** 軽さ優先。ただし将来の文字起こし(16kHz以上のモノラルが標準入力)に困らない下限は守る */
+const MIC_CONSTRAINTS: MediaTrackConstraints = {
   channelCount: 1,
-  sampleRate: 16000,
   echoCancellation: true,
   noiseSuppression: true,
   autoGainControl: true,
@@ -40,17 +39,26 @@ async function blobToBase64(blob: Blob): Promise<string> {
   return btoa(binary)
 }
 
-export type RecordingStatus = 'idle' | 'recording' | 'stopping'
+export type RecordingStatus = 'idle' | 'recording' | 'paused' | 'stopping'
 
 export interface UseRecording {
   status: RecordingStatus
+  /** 実際に録れている長さ。一時停止中は進まない */
   elapsedMs: number
   error: string
-  /** 録音中なら、録音開始からの経過ミリ秒。録音していなければ undefined */
+  /** システム音声(相手の声)を拾えているか */
+  systemAudio: boolean
+  /** マイク(自分の声)が入っているか */
+  micOn: boolean
+  toggleMic: () => void
   offsetNow: () => number | undefined
   start: () => Promise<void>
-  stop: () => Promise<void>
-  /** 再生 */
+  pause: () => void
+  resume: () => void
+  /** 録音を確定して保存する */
+  finish: () => Promise<void>
+  /** 録り直し。いまの音声は捨てる */
+  discard: () => Promise<void>
   audioRef: React.RefObject<HTMLAudioElement | null>
   audioUrl: string | null
   loadingAudio: boolean
@@ -61,46 +69,110 @@ export function useRecording(
   meetingId: string,
   recording: Recording | undefined,
   onFinished: (recording: Recording) => void,
+  onDiscarded: () => Promise<void>,
 ): UseRecording {
   const [status, setStatus] = useState<RecordingStatus>('idle')
   const [elapsedMs, setElapsedMs] = useState(0)
   const [error, setError] = useState('')
+  const [systemAudio, setSystemAudio] = useState(false)
+  const [micOn, setMicOn] = useState(true)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [loadingAudio, setLoadingAudio] = useState(false)
 
   const recorderRef = useRef<MediaRecorder | null>(null)
-  const streamRef = useRef<MediaStream | null>(null)
-  const startedAtRef = useRef<number>(0)
+  const startingRef = useRef(false)
+  const streamsRef = useRef<MediaStream[]>([])
+  const micTrackRef = useRef<MediaStreamTrack | null>(null)
+  const contextRef = useRef<AudioContext | null>(null)
   const fileNameRef = useRef<string>('')
+  const startedAtRef = useRef<number>(0)
+  // 一時停止をまたいでも「実際に録れた長さ」で数える。
+  // 壁時計で数えると、止めていた分だけ頭出しの位置がずれる
+  const accumulatedRef = useRef(0)
+  const segmentStartedAtRef = useRef(0)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const objectUrlRef = useRef<string | null>(null)
   // 断片の書き込みは順番に並べる。並行させると音声の順序が壊れる
   const writeChainRef = useRef<Promise<unknown>>(Promise.resolve())
 
+  const recordedMs = useCallback(
+    () =>
+      accumulatedRef.current +
+      (recorderRef.current?.state === 'recording' ? Date.now() - segmentStartedAtRef.current : 0),
+    [],
+  )
+
   const offsetNow = useCallback(
-    () => (status === 'recording' ? Date.now() - startedAtRef.current : undefined),
-    [status],
+    () => (recorderRef.current ? recordedMs() : undefined),
+    [recordedMs],
   )
 
   // 経過時間の表示
   useEffect(() => {
     if (status !== 'recording') return
-    const timer = setInterval(() => setElapsedMs(Date.now() - startedAtRef.current), 500)
+    const timer = setInterval(() => setElapsedMs(recordedMs()), 500)
     return () => clearInterval(timer)
-  }, [status])
+  }, [status, recordedMs])
 
-  const startingRef = useRef(false)
+  /** 使った音源を全部閉じる */
+  const releaseSources = useCallback(() => {
+    streamsRef.current.forEach((stream) => stream.getTracks().forEach((track) => track.stop()))
+    streamsRef.current = []
+    micTrackRef.current = null
+    void contextRef.current?.close().catch(() => undefined)
+    contextRef.current = null
+  }, [])
 
   const start = useCallback(async () => {
-    // awaitを挟むので、印は「マイクを取りに行く前」に立てる。
+    // awaitを挟むので、印は「音源を取りに行く前」に立てる。
     // 立てるのが後だと、二度押しで録音機が2つ動いて同じファイルに書き込む
     if (recorderRef.current || startingRef.current) return
     startingRef.current = true
     setError('')
+
+    const context = new AudioContext()
+    const destination = context.createMediaStreamDestination()
+    destination.channelCount = 1
+    const streams: MediaStream[] = []
+    let gotSystem = false
+    let gotMic = false
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO_CONSTRAINTS })
+      // システム音声。Web会議の相手の声はマイクからはまともに入らないので、こちらが主役
+      try {
+        const display = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: true,
+        })
+        // 映像は録らない。すぐ止める
+        display.getVideoTracks().forEach((track) => track.stop())
+        if (display.getAudioTracks().length > 0) {
+          streams.push(display)
+          context.createMediaStreamSource(display).connect(destination)
+          gotSystem = true
+        }
+      } catch {
+        // 選択をやめた場合もここに来る。マイクだけで続ける
+      }
+
+      // マイク。録音中でも切れるように、トラックを持っておく
+      try {
+        const mic = await navigator.mediaDevices.getUserMedia({ audio: MIC_CONSTRAINTS })
+        streams.push(mic)
+        context.createMediaStreamSource(mic).connect(destination)
+        micTrackRef.current = mic.getAudioTracks()[0] ?? null
+        if (micTrackRef.current) micTrackRef.current.enabled = micOn
+        gotMic = true
+      } catch {
+        // マイクが使えなくても、システム音声だけで録れる
+      }
+
+      if (!gotSystem && !gotMic) {
+        throw new Error('音源をひとつも取得できませんでした')
+      }
+
       const mimeType = pickMimeType()
-      const recorder = new MediaRecorder(stream, {
+      const recorder = new MediaRecorder(destination.stream, {
         ...(mimeType ? { mimeType } : {}),
         audioBitsPerSecond: AUDIO_BITS_PER_SECOND,
       })
@@ -118,33 +190,68 @@ export function useRecording(
           )
       }
 
-      streamRef.current = stream
+      contextRef.current = context
+      streamsRef.current = streams
       recorderRef.current = recorder
       fileNameRef.current = fileName
       startedAtRef.current = Date.now()
+      accumulatedRef.current = 0
+      segmentStartedAtRef.current = Date.now()
       setElapsedMs(0)
+      setSystemAudio(gotSystem)
+      if (!gotSystem) {
+        setError('システム音声を取得できませんでした。マイクだけで録音します。')
+      }
       recorder.start(TIMESLICE_MS)
       setStatus('recording')
     } catch (e) {
+      streams.forEach((stream) => stream.getTracks().forEach((track) => track.stop()))
+      void context.close().catch(() => undefined)
       setError(
-        `録音を開始できませんでした: ${e instanceof Error ? e.message : String(e)}(マイクの使用が許可されているか確認してください)`,
+        `録音を開始できませんでした: ${e instanceof Error ? e.message : String(e)}(共有の選択でシステム音声にチェックを入れてください)`,
       )
     } finally {
       startingRef.current = false
     }
-  }, [meetingId])
+  }, [meetingId, micOn])
+
+  const pause = useCallback(() => {
+    const recorder = recorderRef.current
+    if (!recorder || recorder.state !== 'recording') return
+    accumulatedRef.current += Date.now() - segmentStartedAtRef.current
+    recorder.pause()
+    setElapsedMs(accumulatedRef.current)
+    setStatus('paused')
+  }, [])
+
+  const resume = useCallback(() => {
+    const recorder = recorderRef.current
+    if (!recorder || recorder.state !== 'paused') return
+    segmentStartedAtRef.current = Date.now()
+    recorder.resume()
+    setStatus('recording')
+  }, [])
+
+  const toggleMic = useCallback(() => {
+    setMicOn((on) => {
+      const next = !on
+      if (micTrackRef.current) micTrackRef.current.enabled = next
+      return next
+    })
+  }, [])
 
   // 画面を離れるときにも同じ後始末をしたいので、refに置いて参照を固定する
   const onFinishedRef = useRef(onFinished)
   onFinishedRef.current = onFinished
+  const onDiscardedRef = useRef(onDiscarded)
+  onDiscardedRef.current = onDiscarded
 
-  const stop = useCallback(async () => {
+  /** 録音機を止めて、書き残しを流し切る */
+  const halt = useCallback(async (): Promise<MediaRecorder | null> => {
     const recorder = recorderRef.current
-    if (!recorder) return
+    if (!recorder) return null
     recorderRef.current = null
-    setStatus('stopping')
-    const durationMs = Date.now() - startedAtRef.current
-
+    accumulatedRef.current = recordedMs()
     try {
       if (recorder.state !== 'inactive') {
         await new Promise<void>((resolve) => {
@@ -155,33 +262,62 @@ export function useRecording(
     } catch {
       // 既に止まっていた場合。ここで諦めると保存されないので先へ進む
     }
-    streamRef.current?.getTracks().forEach((track) => track.stop())
-    // 最後の断片が書き終わるまで待つ
+    releaseSources()
     await writeChainRef.current.catch(() => undefined)
+    return recorder
+  }, [recordedMs, releaseSources])
 
-    streamRef.current = null
+  const finish = useCallback(async () => {
+    if (!recorderRef.current) return
+    setStatus('stopping')
+    const recorder = await halt()
     setStatus('idle')
+    if (!recorder) return
     onFinishedRef.current({
       fileName: fileNameRef.current,
       startedAt: new Date(startedAtRef.current).toISOString(),
-      durationMs,
+      durationMs: accumulatedRef.current,
       mimeType: recorder.mimeType || 'audio/webm',
     })
-  }, [])
+  }, [halt])
 
-  // 画面を離れるときに録音が生きていたら、止めて「録音あり」を必ず記録する。
+  /** 録り直し。いまの音声は消して、書いた行の時刻も外す */
+  const discard = useCallback(async () => {
+    setStatus('stopping')
+    await halt()
+    const fileName = fileNameRef.current || recording?.fileName
+    if (fileName) {
+      await invoke('delete_recording', { fileName }).catch(() => undefined)
+    }
+    fileNameRef.current = ''
+    accumulatedRef.current = 0
+    setElapsedMs(0)
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current)
+      objectUrlRef.current = null
+      setAudioUrl(null)
+    }
+    await onDiscardedRef.current()
+    setStatus('idle')
+  }, [halt, recording?.fileName])
+
+  // 画面を離れるときに録音が生きていたら、締めて「録音あり」を必ず記録する。
   // ここで記録し損ねると、音声だけがフォルダに残って辿れなくなる
   useEffect(() => {
     return () => {
-      if (recorderRef.current) void stop()
+      if (recorderRef.current) void finish()
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
     }
-  }, [stop])
+  }, [finish])
 
   // ウィンドウを閉じる・トレイから終了するときにも録音を締める
-  useEffect(() => registerFlush(async () => {
-    if (recorderRef.current) await stop()
-  }), [stop])
+  useEffect(
+    () =>
+      registerFlush(async () => {
+        if (recorderRef.current) await finish()
+      }),
+    [finish],
+  )
 
   // 読み込みが二重に走らないようにする。走らせると使われないURLが漏れ、
   // src の差し替えで再生位置も飛ぶ
@@ -252,9 +388,15 @@ export function useRecording(
     status,
     elapsedMs,
     error,
+    systemAudio,
+    micOn,
+    toggleMic,
     offsetNow,
     start,
-    stop,
+    pause,
+    resume,
+    finish,
+    discard,
     audioRef,
     audioUrl,
     loadingAudio,
