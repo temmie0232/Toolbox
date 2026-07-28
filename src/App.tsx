@@ -18,8 +18,10 @@ export function App() {
   }, [])
 
   // 常駐アプリなので、初回起動時だけログオン時の自動起動を入れる。
-  // 一度ユーザーが設定画面で切ったら、二度と勝手には戻さない
+  // 一度ユーザーが設定画面で切ったら、二度と勝手には戻さない。
+  // 開発ビルドでは行わない(デバッグ用のexeが自動起動に登録されてしまうため)
   useEffect(() => {
+    if (!import.meta.env.PROD) return
     const KEY = 'tool:autostart-initialized'
     if (localStorage.getItem(KEY)) return
     void (async () => {

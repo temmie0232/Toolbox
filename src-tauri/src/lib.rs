@@ -43,12 +43,26 @@ fn hide_window(app: tauri::AppHandle) {
 
 /// 保存先は %APPDATA%\jp.temmie0232.tool\data.json。
 /// 完全ローカル完結で、外部には一切送信しない。
+///
+/// 開発ビルドは data.dev.json を使う。作りかけの機能の不具合で
+/// 実データを壊さないため。初回だけ実データを複製して中身を揃える。
 fn data_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
         .app_data_dir()
         .map_err(|e| format!("保存先フォルダを取得できませんでした: {e}"))?;
     fs::create_dir_all(&dir).map_err(|e| format!("保存先フォルダを作成できませんでした: {e}"))?;
+
+    if cfg!(debug_assertions) {
+        let dev = dir.join("data.dev.json");
+        if !dev.exists() {
+            let real = dir.join("data.json");
+            if real.exists() {
+                let _ = fs::copy(&real, &dev);
+            }
+        }
+        return Ok(dev);
+    }
     Ok(dir.join("data.json"))
 }
 
@@ -118,13 +132,19 @@ fn open_data_dir(app: tauri::AppHandle) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        // 2重起動したら新しく開かず、既存ウィンドウを前面に出す。
-        // 同じdata.jsonを2つのプロセスが書き合って消し合う事故を防ぐ
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            // トレイに隠れている状態でショートカットから起動されたときも、ちゃんと出す
-            show_main(app);
-        }))
+    let builder = tauri::Builder::default();
+
+    // 2重起動したら新しく開かず、既存ウィンドウを前面に出す。
+    // 同じdata.jsonを2つのプロセスが書き合って消し合う事故を防ぐ。
+    // 開発ビルドでは付けない(常駐中の本番版がいると dev が起動できなくなるため。
+    // データファイルも別なので衝突しない)
+    #[cfg(not(debug_assertions))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        // トレイに隠れている状態でショートカットから起動されたときも、ちゃんと出す
+        show_main(app);
+    }));
+
+    builder
         // ウィンドウの位置とサイズを覚えて、次回同じ場所に開く
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
