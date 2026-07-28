@@ -1,5 +1,6 @@
 import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart'
 import { useEffect, useState } from 'react'
+import { ShortcutList } from '../components/ShortcutList'
 import { exportBackup, pickBackup } from '../lib/backup'
 import { formatDateTime } from '../lib/date'
 import { dataFilePath, openDataDir } from '../storage'
@@ -72,11 +73,16 @@ export function Settings() {
       <div>
         <h1 className="text-lg font-semibold text-neutral-900">設定</h1>
         <p className="mt-1 text-xs text-neutral-500">
-          データはこのPCの中だけに保存され、外部には一切送信しません。
+          上のバーをもう一度ダブルクリックすると、元の画面に戻ります。データはこのPCの中だけに保存され、外部には一切送信しません。
         </p>
       </div>
 
-      <section className="space-y-2">
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-neutral-900">ショートカット</h2>
+        <ShortcutList />
+      </section>
+
+      <section className="space-y-2 border-t border-neutral-100 pt-6">
         <h2 className="text-sm font-semibold text-neutral-900">常駐</h2>
         <p className="text-xs text-neutral-500">
           閉じても終了せず、通知領域に常駐します。<kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>T</kbd>{' '}

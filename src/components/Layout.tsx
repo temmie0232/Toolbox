@@ -1,7 +1,7 @@
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Outlet, useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { ShortcutSuspendContext, useShortcuts } from '../lib/useShortcuts'
 import { hideWindow, quitApp, setAlwaysOnTop } from '../storage'
 import { flushAllEdits, getSaveError, hasBlockingDraft, retrySave, useStore } from '../store'
@@ -11,6 +11,7 @@ const PIN_KEY = 'tool:pinned'
 
 export function Layout() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { saveError } = useStore()
   const [helpOpen, setHelpOpen] = useState(false)
 
@@ -80,6 +81,20 @@ export function Layout() {
     [navigate],
   )
 
+  // 設定から戻る先を覚えておく。行って帰ってこられるようにするため
+  const backPathRef = useRef('/')
+  useEffect(() => {
+    if (location.pathname !== '/settings') {
+      backPathRef.current = location.pathname + location.search
+    }
+  }, [location])
+
+  /** 上のバーのダブルクリック。設定(ショートカットのカンペ込み)と行き来する */
+  const toggleSettings = useCallback(() => {
+    if (location.pathname === '/settings') go(backPathRef.current || '/')
+    else go('/settings')
+  }, [location.pathname, go])
+
   const shortcuts = useMemo(
     () => ({
       n: () => go('/tasks/new'),
@@ -103,10 +118,22 @@ export function Layout() {
     <div className="min-h-screen bg-white">
       {/*
         ウィンドウを動かすための取っ手。この灰色の横棒を掴むと移動できる。
-        スクロールしても常に上に残るよう固定する
+        スクロールしても常に上に残るよう固定する。
+        data-tauri-drag-region は使わない。あれはダブルクリックが最大化に
+        固定されていて、こちらの用途(設定への行き来)に差し替えられないため
       */}
       <div className="sticky top-0 z-20 flex justify-center bg-white pt-2 pb-1 select-none">
-        <div data-tauri-drag-region className="cursor-grab px-6 py-1.5 active:cursor-grabbing">
+        <div
+          className="cursor-grab px-6 py-1.5 active:cursor-grabbing"
+          title="掴むと移動 / ダブルクリックで設定とショートカット"
+          onMouseDown={(e) => {
+            if (e.button !== 0) return
+            // 2回目の押下はドラッグを始めない(そのままダブルクリックとして扱う)
+            if (e.detail >= 2) return
+            void getCurrentWindow().startDragging()
+          }}
+          onDoubleClick={toggleSettings}
+        >
           <div className="pointer-events-none h-1 w-10 rounded-full bg-neutral-300" />
         </div>
       </div>
