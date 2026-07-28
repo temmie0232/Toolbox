@@ -19,11 +19,19 @@ const GROUPS: Group[] = [
   {
     title: '画面切替',
     items: [
-      { keys: ['n'], label: '新しいタスク' },
-      { keys: ['m'], label: '新しいメモ' },
       { keys: ['t'], label: 'タスク一覧' },
       { keys: ['l'], label: 'メモ一覧' },
-      { keys: ['b'], label: 'バックアップ' },
+      { keys: ['n'], label: '新しいタスク' },
+      { keys: ['m'], label: '新しいメモ' },
+      { keys: [','], label: '設定(バックアップもここ)' },
+    ],
+  },
+  {
+    title: 'ウィンドウ',
+    items: [
+      { keys: ['Ctrl', 'Alt', 'T'], label: '呼び出す / 隠す(他アプリからでも)' },
+      { keys: ['Ctrl', 'M'], label: '最小化' },
+      { keys: ['Alt', 'F4'], label: '隠す(終了はしない)' },
     ],
   },
   {

@@ -1,9 +1,10 @@
+import { enable, isEnabled } from '@tauri-apps/plugin-autostart'
 import { useEffect } from 'react'
 import { Route, HashRouter as Router, Routes } from 'react-router-dom'
 import { Layout } from './components/Layout'
-import { Backup } from './pages/Backup'
 import { MemoDetail, MemoNew } from './pages/MemoEdit'
 import { MemoList } from './pages/MemoList'
+import { Settings } from './pages/Settings'
 import { TaskDetail } from './pages/TaskDetail'
 import { TaskList } from './pages/TaskList'
 import { TaskNew } from './pages/TaskNew'
@@ -14,6 +15,21 @@ export function App() {
 
   useEffect(() => {
     void initStore()
+  }, [])
+
+  // 常駐アプリなので、初回起動時だけログオン時の自動起動を入れる。
+  // 一度ユーザーが設定画面で切ったら、二度と勝手には戻さない
+  useEffect(() => {
+    const KEY = 'tool:autostart-initialized'
+    if (localStorage.getItem(KEY)) return
+    void (async () => {
+      try {
+        if (!(await isEnabled())) await enable()
+        localStorage.setItem(KEY, '1')
+      } catch {
+        // 自動起動を登録できなくてもアプリ自体は使える
+      }
+    })()
   }, [])
 
   if (status === 'error') {
@@ -44,7 +60,7 @@ export function App() {
           <Route path="memos" element={<MemoList />} />
           <Route path="memos/new" element={<MemoNew />} />
           <Route path="memos/:id" element={<MemoDetail />} />
-          <Route path="backup" element={<Backup />} />
+          <Route path="settings" element={<Settings />} />
           <Route path="*" element={<TaskList />} />
         </Route>
       </Routes>

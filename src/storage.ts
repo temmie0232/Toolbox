@@ -69,6 +69,16 @@ export function openDataDir(): Promise<void> {
   return invoke('open_data_dir')
 }
 
+/** ウィンドウを隠す(常駐は続く) */
+export function hideWindow(): Promise<void> {
+  return invoke('hide_window')
+}
+
+/** 常駐ごと終了する */
+export function quitApp(): Promise<void> {
+  return invoke('quit_app')
+}
+
 export function writeTextFile(path: string, contents: string): Promise<void> {
   return invoke('write_text_file', { path, contents })
 }

@@ -25,12 +25,7 @@ export function MemoList() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-neutral-900">メモ</h1>
-        <Link to="/memos/new" className="btn-primary">
-          + メモ <kbd className="border-blue-500 bg-blue-500 text-blue-50">m</kbd>
-        </Link>
-      </div>
+      <h1 className="text-lg font-semibold text-neutral-900">メモ</h1>
 
       {status === 'loading' && <p className="text-sm text-neutral-500">読み込み中…</p>}
 

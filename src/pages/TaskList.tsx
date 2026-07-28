@@ -53,17 +53,7 @@ export function TaskList() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-neutral-900">タスク</h1>
-        <div className="flex gap-2">
-          <Link to="/tasks/new" className="btn-primary">
-            + タスク <kbd className="border-blue-500 bg-blue-500 text-blue-50">n</kbd>
-          </Link>
-          <Link to="/memos/new" className="btn-ghost">
-            + メモ <kbd>m</kbd>
-          </Link>
-        </div>
-      </div>
+      <h1 className="text-lg font-semibold text-neutral-900">タスク</h1>
 
       {status === 'loading' && <p className="text-sm text-neutral-500">読み込み中…</p>}
 
