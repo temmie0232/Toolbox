@@ -1,7 +1,16 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "ファイル選択ダイアログのみ許可する(ファイル入出力はRust側のコマンドで行う)",
+  "description": "ダイアログと、ボーダレスウィンドウの操作(ドラッグ移動・最小化・最大化・閉じる)のみ許可する。ファイル入出力はRust側のコマンドで行う",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:allow-save", "dialog:allow-open"]
+  "permissions": [
+    "core:default",
+    "dialog:allow-save",
+    "dialog:allow-open",
+    "core:window:allow-start-dragging",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-destroy"
+  ]
 }

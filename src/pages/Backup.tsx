@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { exportBackup, pickBackup } from '../lib/backup'
+import { formatDateTime } from '../lib/date'
 import { dataFilePath } from '../storage'
-import { clearAllData, replaceAllData, useStore } from '../store'
+import { clearAllData, markBackedUp, replaceAllData, useStore } from '../store'
 
 type Notice = { kind: 'ok' | 'error'; text: string } | null
 
@@ -10,7 +11,7 @@ type Notice = { kind: 'ok' | 'error'; text: string } | null
  * 本体データは %APPDATA% に常時保存されるが、PC乗り換えや事故に備えてJSONにも書き出せる。
  */
 export function Backup() {
-  const { tasks, memos } = useStore()
+  const { tasks, memos, lastBackupAt } = useStore()
   const [notice, setNotice] = useState<Notice>(null)
   const [confirmClear, setConfirmClear] = useState(false)
   const [path, setPath] = useState('')
@@ -27,7 +28,10 @@ export function Backup() {
   const onExport = async () => {
     try {
       const saved = await exportBackup(tasks, memos)
-      if (saved) setNotice({ kind: 'ok', text: `書き出しました: ${saved}` })
+      if (saved) {
+        await markBackedUp()
+        setNotice({ kind: 'ok', text: `書き出しました: ${saved}` })
+      }
     } catch (e) {
       fail(e)
     }
@@ -38,6 +42,8 @@ export function Backup() {
       const picked = await pickBackup()
       if (!picked) return
       await replaceAllData(picked.tasks, picked.memos)
+      // 読み込めた = そのファイルが手元にある = バックアップ済みとみなす
+      await markBackedUp()
       setNotice({
         kind: 'ok',
         text: `読み込みました(タスク${picked.tasks.length}件 / メモ${picked.memos.length}件)。既存データはこの内容で置き換えました。`,
@@ -60,6 +66,9 @@ export function Backup() {
         <p>
           現在のデータ: タスク <strong>{tasks.length}</strong> 件 / メモ{' '}
           <strong>{memos.length}</strong> 件
+        </p>
+        <p className="text-xs text-neutral-500">
+          最終バックアップ: {lastBackupAt ? formatDateTime(lastBackupAt) : 'まだ書き出していません'}
         </p>
         {path && <p className="font-mono text-xs break-all text-neutral-500">{path}</p>}
       </div>

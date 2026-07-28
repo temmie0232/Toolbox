@@ -6,8 +6,12 @@ import { EMPTY_SUBMIT_CHECK, type Memo, type MemoType, type Task } from './types
 export interface StoreState {
   status: 'loading' | 'ready' | 'error'
   error?: string
+  /** ファイル書き込みの失敗。画面上部のバナーで知らせ、再試行できるようにする */
+  saveError?: string
   tasks: Task[]
   memos: Memo[]
+  /** 最後にJSONバックアップを書き出した日時。長く空くと歯車に印を出す */
+  lastBackupAt?: string
 }
 
 let state: StoreState = { status: 'loading', tasks: [], memos: [] }
@@ -37,9 +41,27 @@ let saveChain: Promise<unknown> = Promise.resolve()
 
 function queueSave(): Promise<void> {
   // 実行時点の最新stateを書くので、連続操作は自然にまとめられる
-  const run = saveChain.then(() => saveData(state.tasks, state.memos))
-  saveChain = run.catch(() => undefined)
+  const run = saveChain.then(() => saveData(state.tasks, state.memos, state.lastBackupAt))
+  // 失敗は画面のどこにいても見えるように、グローバルに記録する
+  // (自動保存化により、画面遷移後に失敗が返ってくることがあるため)
+  saveChain = run.then(
+    () => {
+      if (state.saveError) set({ saveError: undefined })
+    },
+    (e) => {
+      set({ saveError: e instanceof Error ? e.message : String(e) })
+    },
+  )
   return run
+}
+
+/** 保存失敗バナーからの再試行 */
+export function retrySave(): Promise<void> {
+  return queueSave()
+}
+
+export function getSaveError(): string | undefined {
+  return state.saveError
 }
 
 type Draft = { tasks: Task[]; memos: Memo[] }
@@ -65,7 +87,13 @@ export async function initStore(): Promise<void> {
 export async function reload(): Promise<void> {
   try {
     const data = await loadData()
-    set({ status: 'ready', error: undefined, tasks: data.tasks, memos: data.memos })
+    set({
+      status: 'ready',
+      error: undefined,
+      tasks: data.tasks,
+      memos: data.memos,
+      lastBackupAt: data.lastBackupAt,
+    })
   } catch (e) {
     set({ status: 'error', error: e instanceof Error ? e.message : String(e) })
   }
@@ -183,4 +211,45 @@ export function replaceAllData(tasks: Task[], memos: Memo[]): Promise<void> {
 
 export function clearAllData(): Promise<void> {
   return commit(() => ({ tasks: [], memos: [] }))
+}
+
+/** バックアップを書き出した(または読み込んだ)ことを記録する */
+export function markBackedUp(): Promise<void> {
+  set({ lastBackupAt: now() })
+  return queueSave()
+}
+
+// ---- 閉じる前の書き残し回収 ----
+// 編集画面は自動保存(0.7秒デバウンス)なので、×ボタンの瞬間に未書き込みが残りうる。
+// 各編集画面がここにflushを登録し、ウィンドウを閉じる直前に呼び切る。
+
+const pendingFlushes = new Set<() => Promise<unknown>>()
+
+export function registerFlush(flush: () => Promise<unknown>): () => void {
+  pendingFlushes.add(flush)
+  return () => {
+    pendingFlushes.delete(flush)
+  }
+}
+
+export async function flushAllEdits(): Promise<void> {
+  await Promise.all([...pendingFlushes].map((f) => f().catch(() => undefined)))
+  await saveChain.catch(() => undefined)
+}
+
+// ---- 新規作成フォームの書きかけ検知 ----
+// 新規作成は明示保存だが、書きかけ中に画面切替キーで飛ぶと入力が消える。
+// フォームが「書きかけあり」を登録しておき、Layoutのナビゲーションはそれを見て止まる。
+
+const draftGuards = new Set<() => boolean>()
+
+export function registerDraftGuard(isDirty: () => boolean): () => void {
+  draftGuards.add(isDirty)
+  return () => {
+    draftGuards.delete(isDirty)
+  }
+}
+
+export function hasBlockingDraft(): boolean {
+  return [...draftGuards].some((isDirty) => isDirty())
 }

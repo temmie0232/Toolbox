@@ -1,17 +1,55 @@
 import { useEffect, useRef } from 'react'
 
-const SHORTCUTS: { keys: string[]; label: string }[] = [
-  { keys: ['n'], label: '新しいタスク(タスク受信箱)' },
-  { keys: ['m'], label: '新しいメモ(空雨傘 / 自由)' },
-  { keys: ['t'], label: 'タスク一覧へ' },
-  { keys: ['l'], label: 'メモ一覧へ' },
-  { keys: ['b'], label: 'バックアップ画面へ' },
-  { keys: ['↑', '↓'], label: '一覧の中を移動(j / k でも可)' },
-  { keys: ['Enter'], label: '選択中の項目を開く' },
-  { keys: ['Tab'], label: '箱から次の箱へ移動' },
-  { keys: ['Ctrl', 'Enter'], label: '保存する' },
-  { keys: ['Esc'], label: '取り消して戻る / 閉じる' },
-  { keys: ['?'], label: 'このヘルプ' },
+interface Group {
+  title: string
+  items: { keys: string[]; label: string }[]
+}
+
+const GROUPS: Group[] = [
+  {
+    title: '一覧',
+    items: [
+      { keys: ['j', 'k'], label: '行を移動(↑↓でも可)' },
+      { keys: ['g g'], label: '先頭へ' },
+      { keys: ['Shift', 'g'], label: '末尾へ' },
+      { keys: ['Enter'], label: '選択中の行を開く' },
+      { keys: ['o'], label: 'その画面の新規作成' },
+    ],
+  },
+  {
+    title: '画面切替',
+    items: [
+      { keys: ['n'], label: '新しいタスク' },
+      { keys: ['m'], label: '新しいメモ' },
+      { keys: ['t'], label: 'タスク一覧' },
+      { keys: ['l'], label: 'メモ一覧' },
+      { keys: ['b'], label: 'バックアップ' },
+    ],
+  },
+  {
+    title: 'タスク詳細',
+    items: [
+      { keys: ['1', '4'], label: 'ステータス変更(受領〜完了)' },
+      { keys: ['a'], label: '疑問点の追加欄へ' },
+      { keys: ['c'], label: '未解決の疑問点を確認用にコピー' },
+      { keys: ['h'], label: '一覧へ戻る(Escでも可)' },
+    ],
+  },
+  {
+    title: 'メモ編集',
+    items: [
+      { keys: ['1', '2'], label: 'テンプレ切替(空雨傘 / 自由)' },
+      { keys: ['h'], label: '戻る(Escでも可)' },
+    ],
+  },
+  {
+    title: '入力',
+    items: [
+      { keys: ['Tab'], label: '次の箱へ移動' },
+      { keys: ['Ctrl', 'Enter'], label: '即保存(編集画面は自動保存)' },
+      { keys: ['Esc'], label: '戻る / 閉じる(新規作成では取消)' },
+    ],
+  },
 ]
 
 export function ShortcutHelp({ onClose }: { onClose: () => void }) {
@@ -32,10 +70,17 @@ export function ShortcutHelp({ onClose }: { onClose: () => void }) {
     if (!focusable || focusable.length === 0) return
     const first = focusable[0]
     const last = focusable[focusable.length - 1]
-    if (e.shiftKey && document.activeElement === first) {
+    const current = document.activeElement
+    // 本文クリックなどでフォーカスが枠内の要素から外れていたら、まず先頭へ戻す
+    if (!Array.from(focusable).includes(current as HTMLElement)) {
+      e.preventDefault()
+      first.focus()
+      return
+    }
+    if (e.shiftKey && current === first) {
       e.preventDefault()
       last.focus()
-    } else if (!e.shiftKey && document.activeElement === last) {
+    } else if (!e.shiftKey && current === last) {
       e.preventDefault()
       first.focus()
     }
@@ -50,25 +95,32 @@ export function ShortcutHelp({ onClose }: { onClose: () => void }) {
     >
       <div
         ref={dialogRef}
-        className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl"
+        className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-lg bg-white p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label="キーボードショートカット"
       >
         <h2 className="mb-3 text-sm font-semibold text-neutral-900">キーボードショートカット</h2>
-        <ul className="space-y-1.5">
-          {SHORTCUTS.map((s) => (
-            <li key={s.label} className="flex items-center justify-between gap-4 text-sm">
-              <span className="text-neutral-700">{s.label}</span>
-              <span className="flex shrink-0 gap-1">
-                {s.keys.map((k) => (
-                  <kbd key={k}>{k}</kbd>
+        <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
+          {GROUPS.map((group) => (
+            <section key={group.title}>
+              <h3 className="mb-1.5 text-xs font-medium text-neutral-400">{group.title}</h3>
+              <ul className="space-y-1.5">
+                {group.items.map((s) => (
+                  <li key={s.label} className="flex items-center justify-between gap-4 text-sm">
+                    <span className="text-neutral-700">{s.label}</span>
+                    <span className="flex shrink-0 gap-1">
+                      {s.keys.map((k) => (
+                        <kbd key={k}>{k}</kbd>
+                      ))}
+                    </span>
+                  </li>
                 ))}
-              </span>
-            </li>
+              </ul>
+            </section>
           ))}
-        </ul>
+        </div>
         <button
           ref={closeRef}
           type="button"

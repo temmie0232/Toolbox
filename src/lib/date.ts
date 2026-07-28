@@ -31,3 +31,25 @@ export function formatDateTime(iso: string): string {
   const p = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
+
+/** 今日からn日後を YYYY-MM-DD で返す */
+export function fromToday(days: number): string {
+  const [y, m, d] = today().split('-').map(Number)
+  const t = new Date(y, m - 1, d + days)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())}`
+}
+
+/** 直近の金曜(今日が金曜なら今日) */
+export function nextFriday(): string {
+  const [y, m, d] = today().split('-').map(Number)
+  const day = new Date(y, m - 1, d).getDay()
+  return fromToday((5 - day + 7) % 7)
+}
+
+/** タイムスタンプから「何日前か」(日付単位。今日なら0) */
+export function daysSince(iso: string): number {
+  const d = new Date(iso)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return -daysUntil(`${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`)
+}

@@ -1,12 +1,13 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ConfirmBadge } from '../components/Badges'
+import { DeadlinePick } from '../components/DeadlinePick'
 import { Field } from '../components/Field'
 import { formatDateTime } from '../lib/date'
 import { newId } from '../lib/id'
 import { memoSummary } from '../lib/memoSummary'
-import { useDiscardGuard, useSaveShortcut, useShortcuts } from '../lib/useShortcuts'
-import { removeTask, updateTaskWith, useStore } from '../store'
+import { useSaveShortcut, useShortcuts } from '../lib/useShortcuts'
+import { registerFlush, removeTask, updateTaskWith, useStore } from '../store'
 import {
   TASK_STATUS_LABEL,
   TASK_STATUS_ORDER,
@@ -65,9 +66,9 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
   const [deliverable, setDeliverable] = useState(task.deliverable)
   const [deadline, setDeadline] = useState(task.deadline ?? '')
   const [newQuestion, setNewQuestion] = useState('')
-  const [savedAt, setSavedAt] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   const dirty =
     title !== task.title ||
@@ -87,30 +88,84 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
     }
   }, [])
 
-  const save = useCallback(async () => {
-    if (!dirty) return
-    const ok = await run(() =>
-      updateTaskWith(task.id, () => ({
-        title: title.trim() || '(無題)',
-        purpose,
-        deliverable,
-        deadline: deadline || undefined,
+  // ---- テキスト欄は自動保存。保存ボタンを意識させない ----
+  const latest = useRef({ title, purpose, deliverable, deadline })
+  latest.current = { title, purpose, deliverable, deadline }
+  const taskRef = useRef(task)
+  taskRef.current = task
+
+  const flush = useCallback(() => {
+    const t = taskRef.current
+    const v = latest.current
+    if (
+      v.title === t.title &&
+      v.purpose === t.purpose &&
+      v.deliverable === t.deliverable &&
+      v.deadline === (t.deadline ?? '')
+    ) {
+      return Promise.resolve(true)
+    }
+    return run(() =>
+      updateTaskWith(t.id, () => ({
+        title: v.title,
+        purpose: v.purpose,
+        deliverable: v.deliverable,
+        deadline: v.deadline || undefined,
       })),
     )
-    if (ok) setSavedAt(new Date().toISOString())
-  }, [dirty, run, task.id, title, purpose, deliverable, deadline])
+  }, [run])
 
-  useSaveShortcut(() => void save())
+  // 入力が止まって0.7秒後に書き込む。保存が済むと task が更新されて dirty が消える
+  useEffect(() => {
+    if (!dirty) return
+    const timer = setTimeout(() => void flush(), 700)
+    return () => clearTimeout(timer)
+  }, [title, purpose, deliverable, deadline, dirty, flush])
 
-  const leave = useCallback(() => navigate('/'), [navigate])
-  const { armed, onEscape, disarm } = useDiscardGuard(dirty, leave)
-  const shortcuts = useMemo(() => ({ Escape: onEscape }), [onEscape])
+  // 打ちっぱなしだと上のデバウンスは延び続けるので、書きかけがある間は2秒ごとにも書く
+  useEffect(() => {
+    if (!dirty) return
+    const interval = setInterval(() => void flush(), 2000)
+    return () => clearInterval(interval)
+  }, [dirty, flush])
+
+  // 画面を離れるときに書き残しを流し込む(commitはメモリへ即反映なので待たなくてよい)
+  useEffect(() => () => void flush(), [flush])
+  // ウィンドウを閉じる直前にも呼んでもらう
+  useEffect(() => registerFlush(flush), [flush])
+
+  useSaveShortcut(() => void flush())
+
+  const leave = useCallback(() => {
+    void flush()
+    navigate('/')
+  }, [flush, navigate])
+
+  const setStatus = useCallback(
+    (next: TaskStatus) => void run(() => updateTaskWith(task.id, () => ({ status: next }))),
+    [run, task.id],
+  )
+
+  const questionInputRef = useRef<HTMLInputElement>(null)
+  const copyRef = useRef<() => Promise<void>>(null)
+
+  const shortcuts = useMemo(
+    () => ({
+      Escape: leave,
+      h: leave,
+      '1': () => setStatus('received'),
+      '2': () => setStatus('in_progress'),
+      '3': () => setStatus('draft_reviewed'),
+      '4': () => setStatus('done'),
+      // vim風: a(append)で疑問点の追加欄へ、cで確認文コピー
+      a: () => questionInputRef.current?.focus(),
+      c: () => void copyRef.current?.(),
+    }),
+    [leave, setStatus],
+  )
   useShortcuts(shortcuts)
 
-  // 以下の操作は「今のtask」ではなく「最新のtask」を元に差分を作る。
-  // 画面が1つ前の状態を持っていても、連続操作で前の変更が消えないようにするため。
-  const setStatus = (next: TaskStatus) => void run(() => updateTaskWith(task.id, () => ({ status: next })))
-
+  // 疑問点・チェック類は「最新のtask」を元に差分を作る(連続操作で前の変更が消えないように)
   const toggleQuestion = (questionId: string) =>
     void run(() =>
       updateTaskWith(task.id, (t) => ({
@@ -122,7 +177,9 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
 
   const deleteQuestion = (questionId: string) =>
     void run(() =>
-      updateTaskWith(task.id, (t) => ({ questions: t.questions.filter((q) => q.id !== questionId) })),
+      updateTaskWith(task.id, (t) => ({
+        questions: t.questions.filter((q) => q.id !== questionId),
+      })),
     )
 
   const addQuestion = async () => {
@@ -144,7 +201,23 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
       })),
     )
 
-  const unresolved = task.questions.filter((q) => !q.resolved).length
+  const unresolvedQuestions = task.questions.filter((q) => !q.resolved)
+
+  /** 未解決の疑問を、そのまま上司に送れる文面にしてコピーする */
+  const copyQuestions = async () => {
+    if (unresolvedQuestions.length === 0) return
+    const text =
+      `「${task.title || '(無題)'}」について確認させてください。\n` +
+      unresolvedQuestions.map((q) => `・${q.text}`).join('\n')
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setError('クリップボードにコピーできませんでした')
+    }
+  }
+  copyRef.current = copyQuestions
 
   return (
     <div className="space-y-8">
@@ -156,16 +229,16 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
             onChange={(e) => setTitle(e.target.value)}
             aria-label="タイトル"
           />
-          {needsConfirmation(task) && <ConfirmBadge count={unresolved} />}
+          {needsConfirmation(task) && <ConfirmBadge count={unresolvedQuestions.length} />}
         </div>
 
         <div className="flex flex-wrap items-center gap-1">
-          {TASK_STATUS_ORDER.map((s) => (
+          {TASK_STATUS_ORDER.map((s, i) => (
             <button
               key={s}
               type="button"
               onClick={() => setStatus(s)}
-              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+              className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                 task.status === s
                   ? 'bg-neutral-900 text-white'
                   : 'border border-neutral-300 text-neutral-600 hover:bg-neutral-50'
@@ -173,8 +246,16 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
               aria-pressed={task.status === s}
             >
               {TASK_STATUS_LABEL[s]}
+              <kbd
+                className={
+                  task.status === s ? 'border-neutral-700 bg-neutral-800 text-neutral-300' : ''
+                }
+              >
+                {i + 1}
+              </kbd>
             </button>
           ))}
+          <span className="ml-2 text-xs text-neutral-400">{dirty ? '保存中…' : '保存済み'}</span>
         </div>
       </div>
 
@@ -200,50 +281,38 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
         </Field>
 
         <Field label="期限" htmlFor="deadline">
-          <input
-            id="deadline"
-            type="date"
-            className="box-input max-w-48"
-            value={deadline}
-            onChange={(e) => setDeadline(e.target.value)}
-          />
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              id="deadline"
+              type="date"
+              className="box-input max-w-48"
+              value={deadline}
+              onChange={(e) => setDeadline(e.target.value)}
+            />
+            <DeadlinePick value={deadline} onChange={setDeadline} />
+          </div>
         </Field>
-
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => void save()}
-            disabled={!dirty}
-          >
-            保存 <kbd className="border-blue-500 bg-blue-500 text-blue-50">Ctrl+Enter</kbd>
-          </button>
-          <span className="text-xs text-neutral-500">
-            {dirty
-              ? '未保存の変更があります'
-              : savedAt
-                ? `保存しました ${formatDateTime(savedAt)}`
-                : ''}
-          </span>
-        </div>
-
-        {armed && (
-          <p className="text-sm text-amber-700">
-            未保存の変更があります。破棄して戻るならもう一度 <kbd>Esc</kbd>。
-            <button type="button" className="ml-2 underline" onClick={disarm}>
-              編集を続ける
-            </button>
-          </p>
-        )}
 
         {error && <p className="text-sm text-red-600">{error}</p>}
       </div>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-neutral-900">
-          疑問点{' '}
-          <span className="font-normal text-neutral-500">— 未解決は「上司に確認すべきこと」</span>
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-neutral-900">
+            疑問点{' '}
+            <span className="font-normal text-neutral-500">— 未解決は「上司に確認すべきこと」</span>
+          </h2>
+          {unresolvedQuestions.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void copyQuestions()}
+              className="shrink-0 text-xs text-blue-600 hover:underline"
+              title="未解決の疑問点を、そのまま送れる文面でコピーする"
+            >
+              {copied ? 'コピーしました ✓' : '確認用にコピー'}
+            </button>
+          )}
+        </div>
         <ul className="space-y-1.5">
           {task.questions.map((q) => (
             <li key={q.id} className="group flex items-start gap-2">
@@ -276,6 +345,7 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
         </ul>
         <div className="flex gap-2">
           <input
+            ref={questionInputRef}
             className="box-input"
             value={newQuestion}
             onChange={(e) => setNewQuestion(e.target.value)}
@@ -286,7 +356,7 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
                 void addQuestion()
               }
             }}
-            placeholder="疑問点を追加(Enterで追加)"
+            placeholder="疑問点を追加(Enterで追加 / aでここへ)"
             aria-label="疑問点を追加"
           />
           <button type="button" className="btn-ghost shrink-0" onClick={() => void addQuestion()}>

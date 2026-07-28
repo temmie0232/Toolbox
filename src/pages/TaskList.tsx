@@ -1,7 +1,8 @@
-import { useMemo, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useMemo } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { ConfirmBadge, StatusBadge } from '../components/Badges'
 import { daysUntil, deadlineLabel } from '../lib/date'
+import { useListNav } from '../lib/useListNav'
 import { useShortcuts } from '../lib/useShortcuts'
 import { useStore } from '../store'
 import { needsConfirmation, type Task } from '../types'
@@ -20,7 +21,8 @@ function byDeadline(a: Task, b: Task): number {
 
 export function TaskList() {
   const { status, tasks } = useStore()
-  const rowRefs = useRef<(HTMLAnchorElement | null)[]>([])
+  const navigate = useNavigate()
+  const { setRow, nav } = useListNav()
 
   const { open, done } = useMemo(() => {
     const open = tasks.filter((t) => t.status !== 'done').sort(byDeadline)
@@ -30,31 +32,24 @@ export function TaskList() {
     return { open, done }
   }, [tasks])
 
-  const ordered = useMemo(() => [...open, ...done], [open, done])
-
-  const moveFocus = useMemo(
-    () => (delta: number) => {
-      const rows = rowRefs.current.filter(Boolean) as HTMLAnchorElement[]
-      if (rows.length === 0) return
-      const current = rows.indexOf(document.activeElement as HTMLAnchorElement)
-      const next = current === -1 ? 0 : Math.min(rows.length - 1, Math.max(0, current + delta))
-      rows[next]?.focus()
-    },
-    [],
-  )
-
-  const shortcuts = useMemo(
-    () => ({
-      ArrowDown: () => moveFocus(1),
-      ArrowUp: () => moveFocus(-1),
-      j: () => moveFocus(1),
-      k: () => moveFocus(-1),
-    }),
-    [moveFocus],
-  )
+  const shortcuts = useMemo(() => ({ ...nav, o: () => navigate('/tasks/new') }), [nav, navigate])
   useShortcuts(shortcuts)
 
-  rowRefs.current = []
+  // 詳細から戻ってきたら、さっき見ていた行にフォーカスを戻す(j/kで続きから動ける)
+  useEffect(() => {
+    if (status !== 'ready') return
+    const id = sessionStorage.getItem('tool:lastTaskId')
+    if (!id) return
+    sessionStorage.removeItem('tool:lastTaskId')
+    const row = document.querySelector<HTMLAnchorElement>(`a[data-task-id="${id}"]`)
+    if (!row) return
+    // 完了セクションの中にいるなら、開いてからフォーカスする
+    if (row.offsetParent === null) {
+      const details = row.closest('details')
+      if (details) details.open = true
+    }
+    row.focus()
+  }, [status])
 
   return (
     <div className="space-y-6">
@@ -72,7 +67,7 @@ export function TaskList() {
 
       {status === 'loading' && <p className="text-sm text-neutral-500">読み込み中…</p>}
 
-      {status === 'ready' && ordered.length === 0 && (
+      {status === 'ready' && open.length === 0 && done.length === 0 && (
         <div className="rounded-lg border border-dashed border-neutral-300 px-6 py-12 text-center">
           <p className="text-sm text-neutral-600">まだタスクがありません。</p>
           <p className="mt-1 text-xs text-neutral-500">
@@ -84,13 +79,7 @@ export function TaskList() {
       {open.length > 0 && (
         <ul className="divide-y divide-neutral-100 border-y border-neutral-100">
           {open.map((task, i) => (
-            <TaskRow
-              key={task.id}
-              task={task}
-              ref={(el) => {
-                rowRefs.current[i] = el
-              }}
-            />
+            <TaskRow key={task.id} task={task} ref={setRow(i)} />
           ))}
         </ul>
       )}
@@ -102,13 +91,7 @@ export function TaskList() {
           </summary>
           <ul className="mt-2 divide-y divide-neutral-100 border-y border-neutral-100">
             {done.map((task, i) => (
-              <TaskRow
-                key={task.id}
-                task={task}
-                ref={(el) => {
-                  rowRefs.current[open.length + i] = el
-                }}
-              />
+              <TaskRow key={task.id} task={task} ref={setRow(open.length + i)} />
             ))}
           </ul>
         </details>
@@ -124,18 +107,28 @@ interface TaskRowProps {
 
 function TaskRow({ task, ref }: TaskRowProps) {
   const unresolved = task.questions.filter((q) => !q.resolved).length
-  const overdue = task.deadline !== undefined && task.status !== 'done' && daysUntil(task.deadline) < 0
+  const diff = task.deadline !== undefined ? daysUntil(task.deadline) : null
+
+  // 期限の近さで色を変える: 超過=赤 / 今日明日=琥珀 / それ以外=灰
+  const deadlineClass =
+    task.status === 'done' || diff === null
+      ? 'text-neutral-400'
+      : diff < 0
+        ? 'font-medium text-red-600'
+        : diff <= 1
+          ? 'font-medium text-amber-700'
+          : 'text-neutral-500'
 
   return (
     <li>
       <Link
         ref={ref}
         to={`/tasks/${task.id}`}
+        data-task-id={task.id}
+        onClick={() => sessionStorage.setItem('tool:lastTaskId', task.id)}
         className="flex items-center gap-3 px-1 py-2.5 hover:bg-neutral-50"
       >
-        <span
-          className={`w-20 shrink-0 text-xs ${overdue ? 'font-medium text-red-600' : 'text-neutral-500'}`}
-        >
+        <span className={`w-20 shrink-0 text-xs ${deadlineClass}`}>
           {deadlineLabel(task.deadline)}
         </span>
         <span

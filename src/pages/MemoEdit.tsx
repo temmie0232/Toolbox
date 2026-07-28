@@ -1,9 +1,21 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Field } from '../components/Field'
 import { formatDateTime } from '../lib/date'
-import { useDiscardGuard, useSaveShortcut, useShortcuts } from '../lib/useShortcuts'
-import { createMemo, removeMemo, updateMemo, useStore } from '../store'
+import {
+  useDiscardGuard,
+  useSaveShortcut,
+  useShortcuts,
+  type ShortcutMap,
+} from '../lib/useShortcuts'
+import {
+  createMemo,
+  registerDraftGuard,
+  registerFlush,
+  removeMemo,
+  updateMemo,
+  useStore,
+} from '../store'
 import type { Memo, MemoType, Task } from '../types'
 
 /** F3 空雨傘メモ。テンプレは「空雨傘」と「自由」の2つだけ */
@@ -41,6 +53,7 @@ interface MemoFormProps {
 
 function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
   const navigate = useNavigate()
+  const isEdit = Boolean(memo)
   const [type, setType] = useState<MemoType>(memo?.type ?? 'soraamekasa')
   const [taskId, setTaskId] = useState(memo?.taskId ?? initialTaskId)
   const [fact, setFact] = useState(memo?.fact ?? '')
@@ -48,7 +61,6 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
   const [action, setAction] = useState(memo?.action ?? '')
   const [body, setBody] = useState(memo?.body ?? '')
   const [saving, setSaving] = useState(false)
-  const [savedAt, setSavedAt] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -60,63 +72,183 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
     action !== (memo?.action ?? '') ||
     body !== (memo?.body ?? '')
 
-  const back = useCallback(() => {
-    const linked = memo?.taskId || initialTaskId
-    navigate(linked ? `/tasks/${linked}` : '/memos')
-  }, [navigate, memo?.taskId, initialTaskId])
+  // ---- 既存メモは自動保存 ----
+  const latest = useRef({ type, taskId, fact, interpretation, action, body })
+  latest.current = { type, taskId, fact, interpretation, action, body }
+  const memoRef = useRef(memo)
+  memoRef.current = memo
 
-  const save = useCallback(async () => {
+  const back = useCallback(() => {
+    // 紐付けを変えた直後でも「いま選ばれている」タスクへ戻る(propのmemoは1つ前のことがある)
+    const linked = latest.current.taskId || initialTaskId
+    navigate(linked ? `/tasks/${linked}` : '/memos')
+  }, [navigate, initialTaskId])
+
+  const flush = useCallback(async () => {
+    const m = memoRef.current
+    if (!m) return true
+    const v = latest.current
+    if (
+      v.type === m.type &&
+      v.taskId === (m.taskId ?? '') &&
+      v.fact === (m.fact ?? '') &&
+      v.interpretation === (m.interpretation ?? '') &&
+      v.action === (m.action ?? '') &&
+      v.body === (m.body ?? '')
+    ) {
+      return true
+    }
+    try {
+      setError('')
+      // テンプレを切り替えても、もう一方に書いた内容は消さずに持っておく
+      await updateMemo(m.id, {
+        type: v.type,
+        taskId: v.taskId || undefined,
+        fact: v.fact,
+        interpretation: v.interpretation,
+        action: v.action,
+        body: v.body,
+      })
+      return true
+    } catch (e) {
+      setError(`保存できませんでした: ${e instanceof Error ? e.message : String(e)}`)
+      return false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isEdit || !dirty) return
+    const timer = setTimeout(() => void flush(), 700)
+    return () => clearTimeout(timer)
+  }, [isEdit, dirty, type, taskId, fact, interpretation, action, body, flush])
+
+  // 打ちっぱなしだと上のデバウンスは延び続けるので、書きかけがある間は2秒ごとにも書く
+  useEffect(() => {
+    if (!isEdit || !dirty) return
+    const interval = setInterval(() => void flush(), 2000)
+    return () => clearInterval(interval)
+  }, [isEdit, dirty, flush])
+
+  useEffect(() => {
+    if (!isEdit) return
+    return () => void flush()
+  }, [isEdit, flush])
+  useEffect(() => (isEdit ? registerFlush(flush) : undefined), [isEdit, flush])
+
+  // ---- 新規メモは明示保存(空のメモを量産しないため) ----
+  const savedRef = useRef(false)
+
+  const saveNew = useCallback(async () => {
     if (saving) return
     setSaving(true)
     setError('')
-    // テンプレを切り替えても、もう一方に書いた内容は消さずに持っておく
-    const payload = { type, taskId: taskId || undefined, fact, interpretation, action, body }
+    const v = latest.current
     try {
-      if (memo) {
-        await updateMemo(memo.id, payload)
-        setSavedAt(new Date().toISOString())
-      } else {
-        await createMemo(payload)
-        back()
-      }
+      await createMemo({
+        type: v.type,
+        taskId: v.taskId || undefined,
+        fact: v.fact,
+        interpretation: v.interpretation,
+        action: v.action,
+        body: v.body,
+      })
+      savedRef.current = true
+      back()
     } catch (e) {
       setError(`保存できませんでした: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
       setSaving(false)
     }
-  }, [saving, type, taskId, fact, interpretation, action, body, memo, back])
+  }, [saving, back])
 
-  useSaveShortcut(() => void save())
+  // 書きかけ中は画面切替キーで飛ばさない + ウィンドウを閉じるときは救済保存する
+  const dirtyRef = useRef(false)
+  dirtyRef.current = !isEdit && dirty
+  useEffect(() => {
+    if (isEdit) return
+    return registerDraftGuard(() => dirtyRef.current)
+  }, [isEdit])
+  useEffect(() => {
+    if (isEdit) return
+    return registerFlush(async () => {
+      const v = latest.current
+      const hasContent = Boolean(v.fact || v.interpretation || v.action || v.body)
+      if (savedRef.current || !hasContent) return
+      await createMemo({
+        type: v.type,
+        taskId: v.taskId || undefined,
+        fact: v.fact,
+        interpretation: v.interpretation,
+        action: v.action,
+        body: v.body,
+      })
+      savedRef.current = true
+    })
+  }, [isEdit])
+
+  useSaveShortcut(() => (isEdit ? void flush() : void saveNew()))
+
+  const leaveEdit = useCallback(() => {
+    void flush()
+    back()
+  }, [flush, back])
 
   const { armed, onEscape, disarm } = useDiscardGuard(dirty, back)
-  const shortcuts = useMemo(() => ({ Escape: onEscape }), [onEscape])
+
+  const shortcuts = useMemo<ShortcutMap>(() => {
+    if (isEdit) {
+      const map: ShortcutMap = {
+        Escape: leaveEdit,
+        h: leaveEdit,
+        '1': () => setType('soraamekasa'),
+        '2': () => setType('free'),
+      }
+      return map
+    }
+    const map: ShortcutMap = { Escape: onEscape }
+    return map
+  }, [isEdit, leaveEdit, onEscape])
   useShortcuts(shortcuts)
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-neutral-900">{memo ? 'メモ' : '新しいメモ'}</h1>
-        <div className="flex gap-1">
-          {(
-            [
-              ['soraamekasa', '空雨傘'],
-              ['free', '自由'],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setType(value)}
-              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                type === value
-                  ? 'bg-neutral-900 text-white'
-                  : 'border border-neutral-300 text-neutral-600 hover:bg-neutral-50'
-              }`}
-              aria-pressed={type === value}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          {isEdit && (
+            <span className="text-xs text-neutral-400">{dirty ? '保存中…' : '保存済み'}</span>
+          )}
+          <div className="flex gap-1">
+            {(
+              [
+                ['soraamekasa', '空雨傘', '1'],
+                ['free', '自由', '2'],
+              ] as const
+            ).map(([value, label, key]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setType(value)}
+                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  type === value
+                    ? 'bg-neutral-900 text-white'
+                    : 'border border-neutral-300 text-neutral-600 hover:bg-neutral-50'
+                }`}
+                aria-pressed={type === value}
+              >
+                {label}
+                {isEdit && (
+                  <kbd
+                    className={
+                      type === value ? 'border-neutral-700 bg-neutral-800 text-neutral-300' : ''
+                    }
+                  >
+                    {key}
+                  </kbd>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -129,7 +261,7 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
               rows={3}
               value={fact}
               onChange={(e) => setFact(e.target.value)}
-              autoFocus
+              autoFocus={!isEdit}
             />
           </Field>
           <Field label="雨(解釈)" hint="その事実は何を意味する?" htmlFor="interpretation">
@@ -159,7 +291,7 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
             rows={10}
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            autoFocus
+            autoFocus={!isEdit}
           />
         </Field>
       )}
@@ -180,9 +312,9 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
         </select>
       </Field>
 
-      {armed && (
+      {!isEdit && armed && (
         <p className="text-sm text-amber-700">
-          未保存の変更があります。破棄して戻るならもう一度 <kbd>Esc</kbd>。
+          書きかけがあります。破棄するならもう一度 <kbd>Esc</kbd>。
           <button type="button" className="ml-2 underline" onClick={disarm}>
             編集を続ける
           </button>
@@ -192,15 +324,25 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <div className="flex items-center gap-3 pt-2">
-        <button type="button" className="btn-primary" onClick={() => void save()} disabled={saving}>
-          保存 <kbd className="border-blue-500 bg-blue-500 text-blue-50">Ctrl+Enter</kbd>
-        </button>
-        <button type="button" className="btn-ghost" onClick={onEscape}>
-          {memo ? '戻る' : '取消'} <kbd>Esc</kbd>
-        </button>
-        <span className="text-xs text-neutral-500">
-          {dirty ? '未保存の変更があります' : savedAt ? `保存しました ${formatDateTime(savedAt)}` : ''}
-        </span>
+        {isEdit ? (
+          <button type="button" className="btn-ghost" onClick={leaveEdit}>
+            戻る <kbd>Esc</kbd>
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => void saveNew()}
+              disabled={saving}
+            >
+              保存 <kbd className="border-blue-500 bg-blue-500 text-blue-50">Ctrl+Enter</kbd>
+            </button>
+            <button type="button" className="btn-ghost" onClick={onEscape}>
+              取消 <kbd>Esc</kbd>
+            </button>
+          </>
+        )}
       </div>
 
       {memo && (
@@ -218,7 +360,9 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
                   void removeMemo(memo.id)
                     .then(() => navigate('/memos'))
                     .catch((e: unknown) =>
-                      setError(`削除できませんでした: ${e instanceof Error ? e.message : String(e)}`),
+                      setError(
+                        `削除できませんでした: ${e instanceof Error ? e.message : String(e)}`,
+                      ),
                     )
                 }
               >

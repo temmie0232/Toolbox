@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { DeadlinePick } from '../components/DeadlinePick'
 import { Field } from '../components/Field'
 import { useDiscardGuard, useSaveShortcut, useShortcuts } from '../lib/useShortcuts'
-import { createTask } from '../store'
+import { createTask, registerDraftGuard, registerFlush } from '../store'
 
 /**
  * F1 タスク受信箱。白紙ではなく4つの箱を出す。
@@ -21,6 +22,10 @@ export function TaskNew() {
 
   const dirty = Boolean(title || purpose || deliverable || deadline || questions)
 
+  const latest = useRef({ title, purpose, deliverable, deadline, questions })
+  latest.current = { title, purpose, deliverable, deadline, questions }
+  const savedRef = useRef(false)
+
   const save = useCallback(async () => {
     if (saving) return
     if (!title.trim()) {
@@ -38,6 +43,7 @@ export function TaskNew() {
         deadline: deadline || undefined,
         questionTexts: questions.split('\n'),
       })
+      savedRef.current = true
       navigate('/')
     } catch (e) {
       setError(`保存できませんでした: ${e instanceof Error ? e.message : String(e)}`)
@@ -45,6 +51,27 @@ export function TaskNew() {
       setSaving(false)
     }
   }, [saving, title, purpose, deliverable, deadline, questions, navigate])
+
+  // 書きかけ中は画面切替キーで飛ばさない + ウィンドウを閉じるときは救済保存する
+  const dirtyRef = useRef(false)
+  dirtyRef.current = dirty
+  useEffect(() => registerDraftGuard(() => dirtyRef.current), [])
+  useEffect(
+    () =>
+      registerFlush(async () => {
+        if (savedRef.current || !dirtyRef.current) return
+        const v = latest.current
+        await createTask({
+          title: v.title.trim() || '(無題)',
+          purpose: v.purpose,
+          deliverable: v.deliverable,
+          deadline: v.deadline || undefined,
+          questionTexts: v.questions.split('\n'),
+        })
+        savedRef.current = true
+      }),
+    [],
+  )
 
   useSaveShortcut(() => void save())
 
@@ -103,13 +130,16 @@ export function TaskNew() {
       </Field>
 
       <Field label="期限" hint="未定でも可" htmlFor="deadline">
-        <input
-          id="deadline"
-          type="date"
-          className="box-input max-w-48"
-          value={deadline}
-          onChange={(e) => setDeadline(e.target.value)}
-        />
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            id="deadline"
+            type="date"
+            className="box-input max-w-48"
+            value={deadline}
+            onChange={(e) => setDeadline(e.target.value)}
+          />
+          <DeadlinePick value={deadline} onChange={setDeadline} />
+        </div>
       </Field>
 
       <Field label="疑問点" hint="1行に1件。あとで1件ずつ解決済みにできる" htmlFor="questions">

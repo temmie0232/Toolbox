@@ -26,12 +26,22 @@ fn load_data(app: tauri::AppHandle) -> Result<Option<String>, String> {
         .map_err(|e| format!("データを読めませんでした: {e}"))
 }
 
-/// 一時ファイルに書いてから置き換える。書き込み中にクラッシュしても既存データを壊さない。
+/// 一時ファイルに書き、ディスクへ同期してから置き換える。
+/// 書き込み中のクラッシュや電源断でも既存データを壊さない。
 #[tauri::command]
 fn save_data(app: tauri::AppHandle, contents: String) -> Result<(), String> {
+    use std::io::Write;
     let path = data_path(&app)?;
     let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, contents.as_bytes()).map_err(|e| format!("保存できませんでした: {e}"))?;
+    {
+        let mut file =
+            fs::File::create(&tmp).map_err(|e| format!("保存できませんでした: {e}"))?;
+        file.write_all(contents.as_bytes())
+            .map_err(|e| format!("保存できませんでした: {e}"))?;
+        // renameの前にディスクへ届いたことを保証する(電源断で空ファイルが残らないように)
+        file.sync_all()
+            .map_err(|e| format!("保存できませんでした: {e}"))?;
+    }
     fs::rename(&tmp, &path).map_err(|e| format!("保存できませんでした: {e}"))
 }
 
@@ -53,9 +63,34 @@ fn read_text_file(path: String) -> Result<String, String> {
     fs::read_to_string(&path).map_err(|e| format!("読み込めませんでした: {e}"))
 }
 
+/// データフォルダをエクスプローラーで開く
+#[tauri::command]
+fn open_data_dir(app: tauri::AppHandle) -> Result<(), String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("保存先フォルダを取得できませんでした: {e}"))?;
+    fs::create_dir_all(&dir).map_err(|e| format!("保存先フォルダを作成できませんでした: {e}"))?;
+    std::process::Command::new("explorer")
+        .arg(&dir)
+        .spawn()
+        .map_err(|e| format!("エクスプローラーを開けませんでした: {e}"))?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // 2重起動したら新しく開かず、既存ウィンドウを前面に出す。
+        // 同じdata.jsonを2つのプロセスが書き合って消し合う事故を防ぐ
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
+        // ウィンドウの位置とサイズを覚えて、次回同じ場所に開く
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -72,7 +107,8 @@ pub fn run() {
             save_data,
             data_file_path,
             write_text_file,
-            read_text_file
+            read_text_file,
+            open_data_dir
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

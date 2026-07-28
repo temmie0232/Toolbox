@@ -11,14 +11,24 @@ export function useShortcutsSuspended(): boolean {
   return useContext(ShortcutSuspendContext)
 }
 
-/** 文字入力中とみなす要素。チェックボックスや日付ピッカーは含めない(単キーを使いたいため) */
-const TEXT_INPUT_TYPES = new Set(['text', 'search', 'url', 'tel', 'email', 'password', 'number'])
+/** キー入力を受けない入力要素(クリック操作が主のもの)。これら以外のinputは文字入力中とみなす */
+const NON_TEXT_INPUT_TYPES = new Set([
+  'checkbox',
+  'radio',
+  'button',
+  'submit',
+  'reset',
+  'range',
+  'color',
+  'file',
+])
 
 export function isTyping(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
   if (target.isContentEditable) return true
   if (target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return true
-  if (target instanceof HTMLInputElement) return TEXT_INPUT_TYPES.has(target.type)
+  // 日付欄も「入力中」扱いにする。数字キーが日付入力とショートカットで取り合いにならないように
+  if (target instanceof HTMLInputElement) return !NON_TEXT_INPUT_TYPES.has(target.type)
   return false
 }
 
