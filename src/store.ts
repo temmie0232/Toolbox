@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { newId, now } from './lib/id'
-import { loadData, saveData } from './storage'
+import { deleteRecording, loadData, saveData } from './storage'
 import {
   EMPTY_SUBMIT_CHECK,
   type Meeting,
@@ -277,8 +277,11 @@ export function removeMinuteBlock(meetingId: string, blockId: string): Promise<v
   }))
 }
 
-export function removeMeeting(id: string): Promise<void> {
-  return commit(({ meetings }) => ({ meetings: meetings.filter((m) => m.id !== id) }))
+export async function removeMeeting(id: string): Promise<void> {
+  // 議事録を消したら録音ファイルも残さない(消し忘れると容量だけ食う)
+  const fileName = state.meetings.find((m) => m.id === id)?.recording?.fileName
+  await commit(({ meetings }) => ({ meetings: meetings.filter((m) => m.id !== id) }))
+  if (fileName) await deleteRecording(fileName).catch(() => undefined)
 }
 
 /**

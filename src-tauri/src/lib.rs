@@ -139,6 +139,75 @@ fn read_text_file(path: String) -> Result<String, String> {
     fs::read_to_string(&path).map_err(|e| format!("読み込めませんでした: {e}"))
 }
 
+// ---- 録音 ----
+
+/// 録音ファイルの置き場。data.json と同じフォルダの下に置く
+fn recordings_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("保存先フォルダを取得できませんでした: {e}"))?
+        .join("recordings");
+    fs::create_dir_all(&dir).map_err(|e| format!("録音フォルダを作成できませんでした: {e}"))?;
+    Ok(dir)
+}
+
+/// 画面から渡された名前をそのままパスに使わない。フォルダの外に出られないようにする
+fn recording_path(app: &tauri::AppHandle, file_name: &str) -> Result<PathBuf, String> {
+    let safe: String = file_name
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_' || *c == '.')
+        .collect();
+    if safe.is_empty() || safe.contains("..") {
+        return Err("録音ファイル名が不正です".into());
+    }
+    Ok(recordings_dir(app)?.join(safe))
+}
+
+/// 録音の断片を追記する。録音中ずっと書き足していくので、
+/// 途中でアプリが落ちてもそこまでは残る。
+#[tauri::command]
+fn append_recording(
+    app: tauri::AppHandle,
+    file_name: String,
+    chunk_base64: String,
+) -> Result<u64, String> {
+    use base64::Engine as _;
+    use std::io::Write;
+
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(chunk_base64.as_bytes())
+        .map_err(|e| format!("録音データを読み取れませんでした: {e}"))?;
+    let path = recording_path(&app, &file_name)?;
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|e| format!("録音を保存できませんでした: {e}"))?;
+    file.write_all(&bytes)
+        .map_err(|e| format!("録音を保存できませんでした: {e}"))?;
+    file.metadata()
+        .map(|m| m.len())
+        .map_err(|e| format!("録音を保存できませんでした: {e}"))
+}
+
+/// 再生用に録音を丸ごと読む。バイナリのまま返すので変換の無駄がない
+#[tauri::command]
+fn read_recording(app: tauri::AppHandle, file_name: String) -> Result<tauri::ipc::Response, String> {
+    let path = recording_path(&app, &file_name)?;
+    let bytes = fs::read(&path).map_err(|e| format!("録音を読み込めませんでした: {e}"))?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+#[tauri::command]
+fn delete_recording(app: tauri::AppHandle, file_name: String) -> Result<(), String> {
+    let path = recording_path(&app, &file_name)?;
+    if path.exists() {
+        fs::remove_file(&path).map_err(|e| format!("録音を削除できませんでした: {e}"))?;
+    }
+    Ok(())
+}
+
 /// データフォルダをエクスプローラーで開く
 #[tauri::command]
 fn open_data_dir(app: tauri::AppHandle) -> Result<(), String> {
@@ -269,7 +338,10 @@ pub fn run() {
             open_data_dir,
             hide_window,
             quit_app,
-            set_always_on_top
+            set_always_on_top,
+            append_recording,
+            read_recording,
+            delete_recording
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

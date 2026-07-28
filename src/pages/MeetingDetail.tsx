@@ -1,7 +1,8 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { InlineText } from '../components/InlineText'
 import { formatDateTime } from '../lib/date'
+import { REWIND_SECONDS, formatOffset, useRecording } from '../lib/useRecording'
 import { useShortcuts } from '../lib/useShortcuts'
 import {
   addMinuteBlock,
@@ -17,6 +18,7 @@ import {
   MINUTE_KIND_ORDER,
   type Meeting,
   type MinuteKind,
+  type Recording,
 } from '../types'
 
 const KIND_HINT: Record<MinuteKind, string> = {
@@ -63,13 +65,35 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
     }
   }, [])
 
+  const onRecordingFinished = useCallback(
+    (recording: Recording) =>
+      void run(() => updateMeetingWith(meeting.id, () => ({ recording }))),
+    [meeting.id, run],
+  )
+  const rec = useRecording(meeting.id, meeting.recording, onRecordingFinished)
+
   const add = async () => {
     const value = text.trim()
     if (!value) return
+    // 録音中なら、書いた瞬間の位置を覚えておく。あとでその前後を聞き返せる
+    const offsetMs = rec.offsetNow()
     // 書き込みが通ってから消す。失敗したら打ち直しにならない
-    const ok = await run(() => addMinuteBlock(meeting.id, { kind, text: value }))
+    const ok = await run(() => addMinuteBlock(meeting.id, { kind, text: value, offsetMs }))
     if (ok) setText('')
   }
+
+  /** Ctrl+E で録音の開始・停止(入力欄に手を置いたまま操作できる) */
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === 'e' && e.ctrlKey && !e.altKey && !e.shiftKey) {
+        e.preventDefault()
+        if (rec.status === 'recording') void rec.stop()
+        else if (rec.status === 'idle' && !meeting.recording) void rec.start()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [rec, meeting.recording])
 
   const shortcuts = useMemo(
     () => ({
@@ -117,6 +141,66 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
           </div>
         </div>
       </div>
+
+      {/*
+        録音。空(事実)は録音に丸ごと任せて、人は雨・傘(決定・TODO・論点)だけ書く。
+        逐語メモから解放されることが目的
+      */}
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-neutral-200 px-3 py-2">
+        {rec.status === 'recording' ? (
+          <>
+            <span className="flex items-center gap-2 text-sm font-medium text-red-600">
+              <span className="size-2 animate-pulse rounded-full bg-red-600" />
+              録音中 {formatOffset(rec.elapsedMs)}
+            </span>
+            <button type="button" className="btn-ghost" onClick={() => void rec.stop()}>
+              停止 <kbd>Ctrl+E</kbd>
+            </button>
+          </>
+        ) : meeting.recording ? (
+          <>
+            <span className="shrink-0 text-xs text-neutral-500">
+              録音あり{' '}
+              {meeting.recording.durationMs
+                ? `(${formatOffset(meeting.recording.durationMs)})`
+                : ''}
+            </span>
+            <audio
+              ref={rec.audioRef}
+              src={rec.audioUrl ?? undefined}
+              controls
+              preload="metadata"
+              className="h-8 min-w-0 flex-1"
+            />
+            {!rec.audioUrl && (
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => void rec.seekTo(0)}
+                disabled={rec.loadingAudio}
+              >
+                {rec.loadingAudio ? '読み込み中…' : '再生の準備'}
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => void rec.start()}
+              disabled={rec.status === 'stopping'}
+            >
+              録音を開始 <kbd>Ctrl+E</kbd>
+            </button>
+            <span className="text-xs text-neutral-400">
+              録音していれば、書いた行から{REWIND_SECONDS}秒前を聞き返せる
+            </span>
+          </>
+        )}
+      </div>
+
+      {rec.error && <p className="text-sm text-red-600">{rec.error}</p>}
 
       {/* 入力口はひとつ。種別を切り替えながら流し込む */}
       <div className="space-y-2 rounded-lg border border-neutral-200 p-3">
@@ -206,15 +290,27 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
                     />
                   )}
                   <div className="min-w-0 flex-1">
-                    <div className={block.done ? 'text-neutral-400 line-through' : ''}>
-                      <InlineText
-                        value={block.text}
-                        onCommit={(v) =>
-                          void run(() => updateMinuteBlock(meeting.id, block.id, { text: v }))
-                        }
-                        className="text-sm"
-                        ariaLabel="内容"
-                      />
+                    <div className="flex items-start gap-2">
+                      <div className={`min-w-0 flex-1 ${block.done ? 'text-neutral-400 line-through' : ''}`}>
+                        <InlineText
+                          value={block.text}
+                          onCommit={(v) =>
+                            void run(() => updateMinuteBlock(meeting.id, block.id, { text: v }))
+                          }
+                          className="text-sm"
+                          ariaLabel="内容"
+                        />
+                      </div>
+                      {block.offsetMs !== undefined && meeting.recording && (
+                        <button
+                          type="button"
+                          onClick={() => void rec.seekTo(block.offsetMs!)}
+                          className="mt-0.5 shrink-0 font-mono text-xs text-blue-600 hover:underline"
+                          title={`この行を書いた${REWIND_SECONDS}秒前から再生`}
+                        >
+                          ▶ {formatOffset(block.offsetMs)}
+                        </button>
+                      )}
                     </div>
 
                     {k === 'todo' && (

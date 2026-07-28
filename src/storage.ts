@@ -90,6 +90,11 @@ export function setAlwaysOnTop(value: boolean): Promise<void> {
   return invoke('set_always_on_top', { value })
 }
 
+/** 録音ファイルを消す(議事録を削除したときに呼ぶ) */
+export function deleteRecording(fileName: string): Promise<void> {
+  return invoke('delete_recording', { fileName })
+}
+
 export function writeTextFile(path: string, contents: string): Promise<void> {
   return invoke('write_text_file', { path, contents })
 }
