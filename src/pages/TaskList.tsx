@@ -53,8 +53,6 @@ export function TaskList() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-lg font-semibold text-neutral-900">タスク</h1>
-
       {status === 'loading' && <p className="text-sm text-neutral-500">読み込み中…</p>}
 
       {status === 'ready' && open.length === 0 && done.length === 0 && (

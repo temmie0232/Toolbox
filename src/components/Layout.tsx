@@ -2,25 +2,17 @@ import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
-import { daysSince } from '../lib/date'
 import { ShortcutSuspendContext, useShortcuts } from '../lib/useShortcuts'
-import { hideWindow, quitApp } from '../storage'
+import { hideWindow, quitApp, setAlwaysOnTop } from '../storage'
 import { flushAllEdits, getSaveError, hasBlockingDraft, retrySave, useStore } from '../store'
 import { ShortcutHelp } from './ShortcutHelp'
 
-/** バックアップがこれ以上空いたら印を出す */
-const BACKUP_STALE_DAYS = 14
+const PIN_KEY = 'tool:pinned'
 
 export function Layout() {
   const navigate = useNavigate()
-  const { tasks, memos, lastBackupAt, saveError } = useStore()
+  const { saveError } = useStore()
   const [helpOpen, setHelpOpen] = useState(false)
-
-  const hasData = tasks.length + memos.length > 0
-  const rawAge = lastBackupAt ? daysSince(lastBackupAt) : null
-  // 壊れた日時でNaNになったら「未実施」として扱う(印が永久に消える方向に倒さない)
-  const backupAge = rawAge !== null && Number.isFinite(rawAge) ? rawAge : null
-  const backupStale = hasData && (backupAge === null || backupAge > BACKUP_STALE_DAYS)
 
   /**
    * 常駐アプリなので、閉じる操作(Alt+F4・タスクバー)では終了せずに隠す。
@@ -49,6 +41,17 @@ export function Layout() {
         return
       }
       await quitApp()
+    })
+    return () => {
+      void unlisten.then((f) => f())
+    }
+  }, [])
+
+  /** 前回、前面固定したまま終了していたら起動時に戻す(切り替えはCtrl+Alt+P) */
+  useEffect(() => {
+    if (localStorage.getItem(PIN_KEY) === '1') void setAlwaysOnTop(true)
+    const unlisten = listen<boolean>('pin-changed', (event) => {
+      localStorage.setItem(PIN_KEY, event.payload ? '1' : '0')
     })
     return () => {
       void unlisten.then((f) => f())
@@ -95,27 +98,17 @@ export function Layout() {
   return (
     <div className="min-h-screen bg-white">
       {/*
-        ボーダレスなので、この細いバーがタイトルバーの代わり。
-        掴んでウィンドウを動かす以外の役目は持たせない
+        ウィンドウを動かすための取っ手。この灰色の横棒を掴むと移動できる。
+        スクロールしても常に上に残るよう固定する
       */}
-      <header
-        data-tauri-drag-region
-        className="flex h-7 items-center justify-end border-b border-neutral-100 px-3 select-none"
-      >
-        {backupStale && (
-          <span
-            data-tauri-drag-region
-            className="flex items-center gap-1.5 text-[11px] text-amber-600"
-            title="バックアップが空いています(, で設定へ)"
-          >
-            <span className="size-1.5 rounded-full bg-amber-500" />
-            バックアップ未実施
-          </span>
-        )}
-      </header>
+      <div className="sticky top-0 z-20 flex justify-center bg-white pt-2 pb-1 select-none">
+        <div data-tauri-drag-region className="cursor-grab px-6 py-1.5 active:cursor-grabbing">
+          <div className="pointer-events-none h-1 w-10 rounded-full bg-neutral-300" />
+        </div>
+      </div>
 
       {saveError && (
-        <div className="flex items-center justify-between gap-4 border-b border-red-200 bg-red-50 px-6 py-2">
+        <div className="flex items-center justify-between gap-4 border-y border-red-200 bg-red-50 px-6 py-2">
           <span className="text-sm text-red-700">
             保存に失敗しています: {saveError} —
             入力はメモリ上に残っています。再試行するか、バックアップを書き出してください。
@@ -126,7 +119,7 @@ export function Layout() {
         </div>
       )}
 
-      <main className="mx-auto max-w-3xl px-6 py-5">
+      <main className="mx-auto max-w-3xl px-6 pt-2 pb-6">
         {/* ヘルプが開いている間は各画面のショートカット(特にEsc)を止める */}
         <ShortcutSuspendContext value={helpOpen}>
           <Outlet />

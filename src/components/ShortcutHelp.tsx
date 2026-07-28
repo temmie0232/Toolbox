@@ -30,6 +30,7 @@ const GROUPS: Group[] = [
     title: 'ウィンドウ',
     items: [
       { keys: ['Ctrl', 'Alt', 'T'], label: '呼び出す / 隠す(他アプリからでも)' },
+      { keys: ['Ctrl', 'Alt', 'P'], label: '常に前面に置く / やめる' },
       { keys: ['Ctrl', 'M'], label: '最小化' },
       { keys: ['Alt', 'F4'], label: '隠す(終了はしない)' },
     ],

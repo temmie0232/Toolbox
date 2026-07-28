@@ -79,6 +79,11 @@ export function quitApp(): Promise<void> {
   return invoke('quit_app')
 }
 
+/** 常に前面に置く / やめる(起動時の状態復元に使う。切り替えは Ctrl+Alt+P) */
+export function setAlwaysOnTop(value: boolean): Promise<void> {
+  return invoke('set_always_on_top', { value })
+}
+
 export function writeTextFile(path: string, contents: string): Promise<void> {
   return invoke('write_text_file', { path, contents })
 }

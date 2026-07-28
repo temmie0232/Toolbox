@@ -88,13 +88,6 @@ export function TaskNew() {
         void save()
       }}
     >
-      <div>
-        <h1 className="text-lg font-semibold text-neutral-900">タスク受信箱</h1>
-        <p className="mt-1 text-xs text-neutral-500">
-          キーワードでいい。埋まらなかった箱は、そのまま上司に確認すること。
-        </p>
-      </div>
-
       <Field label="タイトル" htmlFor="title">
         <input
           id="title"

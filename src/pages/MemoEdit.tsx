@@ -212,8 +212,7 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-neutral-900">{memo ? 'メモ' : '新しいメモ'}</h1>
+      <div className="flex items-center justify-end">
         <div className="flex items-center gap-2">
           {isEdit && (
             <span className="text-xs text-neutral-400">{dirty ? '保存中…' : '保存済み'}</span>

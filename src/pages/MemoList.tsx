@@ -25,8 +25,6 @@ export function MemoList() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-lg font-semibold text-neutral-900">メモ</h1>
-
       {status === 'loading' && <p className="text-sm text-neutral-500">読み込み中…</p>}
 
       {status === 'ready' && sorted.length === 0 && (

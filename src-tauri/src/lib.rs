@@ -27,6 +27,30 @@ fn toggle_main(app: &tauri::AppHandle) {
     }
 }
 
+/// 常に前面に置く/やめる を切り替える。
+/// 前面に固定するなら見えていないと意味がないので、隠れていたら出す。
+fn toggle_pin(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let next = !window.is_always_on_top().unwrap_or(false);
+        let _ = window.set_always_on_top(next);
+        if next {
+            let _ = window.show();
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+        }
+        // 画面の表示を合わせるためフロントへ知らせる
+        let _ = window.emit("pin-changed", next);
+    }
+}
+
+/// 起動時に前回の固定状態を復元するために使う
+#[tauri::command]
+fn set_always_on_top(app: tauri::AppHandle, value: bool) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_always_on_top(value);
+    }
+}
+
 /// トレイの「終了」から呼ぶ。書きかけの保存はフロント側で済ませてから来る
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle) {
@@ -207,17 +231,24 @@ pub fn run() {
                     Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
                 };
                 let summon = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyT);
+                let pin = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyP);
                 app.handle().plugin(
                     tauri_plugin_global_shortcut::Builder::new()
                         .with_handler(move |app, shortcut, event| {
-                            if shortcut == &summon && event.state() == ShortcutState::Pressed {
+                            if event.state() != ShortcutState::Pressed {
+                                return;
+                            }
+                            if shortcut == &summon {
                                 toggle_main(app);
+                            } else if shortcut == &pin {
+                                toggle_pin(app);
                             }
                         })
                         .build(),
                 )?;
                 // 他のアプリに取られていても、アプリ自体は動かす
                 let _ = app.global_shortcut().register(summon);
+                let _ = app.global_shortcut().register(pin);
             }
 
             // 自動起動で立ち上がったときは、画面に出さずトレイに常駐するだけにする
@@ -237,7 +268,8 @@ pub fn run() {
             read_text_file,
             open_data_dir,
             hide_window,
-            quit_app
+            quit_app,
+            set_always_on_top
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
