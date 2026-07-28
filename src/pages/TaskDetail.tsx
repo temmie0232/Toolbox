@@ -9,6 +9,7 @@ import { memoSummary } from '../lib/memoSummary'
 import { useSaveShortcut, useShortcuts } from '../lib/useShortcuts'
 import { registerFlush, removeTask, updateTaskWith, useStore } from '../store'
 import {
+  MEMO_TYPE_LABEL,
   TASK_STATUS_LABEL,
   TASK_STATUS_ORDER,
   needsConfirmation,
@@ -408,7 +409,7 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
             <li key={memo.id}>
               <Link to={`/memos/${memo.id}`} className="flex gap-3 px-1 py-2 hover:bg-neutral-50">
                 <span className="w-24 shrink-0 text-xs text-neutral-500">
-                  {memo.type === 'soraamekasa' ? '空雨傘' : '自由メモ'}
+                  {MEMO_TYPE_LABEL[memo.type]}
                 </span>
                 <span className="flex-1 truncate text-sm text-neutral-800">
                   {memoSummary(memo)}

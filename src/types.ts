@@ -47,7 +47,16 @@ export interface Task {
   updatedAt: string
 }
 
-export type MemoType = 'soraamekasa' | 'free'
+export type MemoType = 'soraamekasa' | 'conclusion' | 'free'
+
+export const MEMO_TYPE_LABEL: Record<MemoType, string> = {
+  soraamekasa: '空雨傘',
+  conclusion: '結論ファースト',
+  free: '自由',
+}
+
+/** 結論ファーストの根拠は3つに固定する。増やすと結局まとまらないため */
+export const REASON_COUNT = 3
 
 export interface Memo {
   id: string
@@ -60,7 +69,11 @@ export interface Memo {
   interpretation?: string
   /** 傘: 行動 */
   action?: string
-  /** 自由メモ用 */
+  /** 結論ファースト: 結論1行 */
+  conclusion?: string
+  /** 結論ファースト: 根拠3つ */
+  reasons?: string[]
+  /** 自由メモ / 結論ファーストの肉付け */
   body?: string
   createdAt: string
   updatedAt: string
@@ -119,6 +132,30 @@ export interface Meeting {
   updatedAt: string
 }
 
+/**
+ * ブレスト。批判を止めて量を出すための箱。
+ * 出し切ってからKJ法でグループにまとめる、という順序を画面で強制する。
+ */
+export interface BrainCard {
+  id: string
+  text: string
+  /** まとめたグループ名。未分類は undefined */
+  group?: string
+  createdAt: string
+}
+
+export interface Brainstorm {
+  id: string
+  theme: string
+  /** 制限時間(分) */
+  limitMinutes: number
+  /** 計測を始めた時刻。押すまでは undefined */
+  startedAt?: string
+  cards: BrainCard[]
+  createdAt: string
+  updatedAt: string
+}
+
 /** JSON書き出し/読み込み(F5)の形式 */
 export interface BackupFile {
   app: 'tool'
@@ -128,6 +165,7 @@ export interface BackupFile {
   memos: Memo[]
   /** v0.1のバックアップには無い */
   meetings?: Meeting[]
+  brainstorms?: Brainstorm[]
 }
 
 export const EMPTY_SUBMIT_CHECK: SubmitCheck = {

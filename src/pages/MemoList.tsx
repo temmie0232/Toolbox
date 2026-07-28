@@ -5,6 +5,7 @@ import { memoSummary } from '../lib/memoSummary'
 import { useListNav } from '../lib/useListNav'
 import { useShortcuts } from '../lib/useShortcuts'
 import { useStore } from '../store'
+import { MEMO_TYPE_LABEL } from '../types'
 
 export function MemoList() {
   const { status, memos, tasks } = useStore()
@@ -45,8 +46,8 @@ export function MemoList() {
                 to={`/memos/${memo.id}`}
                 className="flex items-center gap-3 px-1 py-2.5 hover:bg-neutral-50"
               >
-                <span className="w-16 shrink-0 text-xs text-neutral-500">
-                  {memo.type === 'soraamekasa' ? '空雨傘' : '自由'}
+                <span className="w-24 shrink-0 text-xs text-neutral-500">
+                  {MEMO_TYPE_LABEL[memo.type]}
                 </span>
                 <span className="flex-1 truncate text-sm text-neutral-900">
                   {memoSummary(memo)}

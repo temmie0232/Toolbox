@@ -4,6 +4,8 @@ import {
   MINUTE_KIND_ORDER,
   TASK_STATUS_ORDER,
   type BackupFile,
+  type BrainCard,
+  type Brainstorm,
   type Meeting,
   type Memo,
   type MemoType,
@@ -24,6 +26,7 @@ export async function exportBackup(
   tasks: Task[],
   memos: Memo[],
   meetings: Meeting[],
+  brainstorms: Brainstorm[],
 ): Promise<string | null> {
   const path = await save({
     title: 'バックアップの保存先',
@@ -38,6 +41,7 @@ export async function exportBackup(
     tasks,
     memos,
     meetings,
+    brainstorms,
   }
   await writeTextFile(path, JSON.stringify(data, null, 2))
   return path
@@ -48,6 +52,7 @@ export interface PickedBackup {
   tasks: Task[]
   memos: Memo[]
   meetings: Meeting[]
+  brainstorms: Brainstorm[]
 }
 
 /** 開くダイアログを出してJSONを読む。キャンセルされたら null */
@@ -78,7 +83,7 @@ function isStatus(value: unknown): value is TaskStatus {
 }
 
 function isMemoType(value: unknown): value is MemoType {
-  return value === 'soraamekasa' || value === 'free'
+  return value === 'soraamekasa' || value === 'conclusion' || value === 'free'
 }
 
 function isMinuteKind(value: unknown): value is MinuteKind {
@@ -93,7 +98,12 @@ function optionalStr(value: unknown): string | undefined {
  * 読み込んだJSONを検証して正規化する。
  * 壊れたファイルで既存データを吹き飛ばさないよう、ここで弾く。
  */
-export function parseBackup(text: string): { tasks: Task[]; memos: Memo[]; meetings: Meeting[] } {
+export function parseBackup(text: string): {
+  tasks: Task[]
+  memos: Memo[]
+  meetings: Meeting[]
+  brainstorms: Brainstorm[]
+} {
   let raw: unknown
   try {
     raw = JSON.parse(text)
@@ -150,6 +160,10 @@ export function parseBackup(text: string): { tasks: Task[]; memos: Memo[]; meeti
       fact: typeof m.fact === 'string' ? m.fact : undefined,
       interpretation: typeof m.interpretation === 'string' ? m.interpretation : undefined,
       action: typeof m.action === 'string' ? m.action : undefined,
+      conclusion: typeof m.conclusion === 'string' ? m.conclusion : undefined,
+      reasons: Array.isArray(m.reasons)
+        ? m.reasons.filter((r): r is string => typeof r === 'string')
+        : undefined,
       body: typeof m.body === 'string' ? m.body : undefined,
       createdAt: str(m.createdAt, new Date().toISOString()),
       updatedAt: str(m.updatedAt, str(m.createdAt, new Date().toISOString())),
@@ -201,5 +215,32 @@ export function parseBackup(text: string): { tasks: Task[]; memos: Memo[]; meeti
     }
   })
 
-  return { tasks, memos, meetings }
+  const rawBrainstorms = Array.isArray(data.brainstorms) ? data.brainstorms : []
+  const brainstorms: Brainstorm[] = rawBrainstorms.map((item, index) => {
+    const b = item as Partial<Brainstorm>
+    if (typeof b.id !== 'string') {
+      throw new BackupParseError(`${index + 1}件目のブレストにidがありません`)
+    }
+    const cards: BrainCard[] = Array.isArray(b.cards)
+      ? b.cards
+          .filter((c): c is BrainCard => typeof c?.id === 'string')
+          .map((c) => ({
+            id: c.id,
+            text: str(c.text),
+            group: optionalStr(c.group),
+            createdAt: str(c.createdAt, new Date().toISOString()),
+          }))
+      : []
+    return {
+      id: b.id,
+      theme: str(b.theme),
+      limitMinutes: typeof b.limitMinutes === 'number' && b.limitMinutes > 0 ? b.limitMinutes : 5,
+      startedAt: optionalStr(b.startedAt),
+      cards,
+      createdAt: str(b.createdAt, new Date().toISOString()),
+      updatedAt: str(b.updatedAt, str(b.createdAt, new Date().toISOString())),
+    }
+  })
+
+  return { tasks, memos, meetings, brainstorms }
 }

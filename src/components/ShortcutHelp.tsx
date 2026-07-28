@@ -22,9 +22,11 @@ const GROUPS: Group[] = [
       { keys: ['t'], label: 'タスク一覧' },
       { keys: ['l'], label: 'メモ一覧' },
       { keys: ['r'], label: '議事録一覧' },
+      { keys: ['s'], label: 'ブレスト一覧' },
       { keys: ['n'], label: '新しいタスク' },
       { keys: ['m'], label: '新しいメモ' },
       { keys: ['Shift', 'R'], label: '新しい議事録' },
+      { keys: ['Shift', 'S'], label: '新しいブレスト' },
       { keys: [','], label: '設定(バックアップもここ)' },
     ],
   },
@@ -49,7 +51,7 @@ const GROUPS: Group[] = [
   {
     title: 'メモ編集',
     items: [
-      { keys: ['1', '2'], label: 'テンプレ切替(空雨傘 / 自由)' },
+      { keys: ['1', '3'], label: 'テンプレ切替(空雨傘 / 結論ファースト / 自由)' },
       { keys: ['h'], label: '戻る(Escでも可)' },
     ],
   },
