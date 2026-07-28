@@ -23,6 +23,120 @@ import {
   type Recording,
 } from '../types'
 
+/**
+ * 録音の操作ボタン。狭い画面でも崩れないよう小さく揃える。
+ * ショートカットはツールチップに逃がす(ボタンに並べると横幅を食って折り返しが汚くなる)
+ */
+function RecButton({
+  children,
+  onClick,
+  title,
+  primary,
+  disabled,
+}: {
+  children: React.ReactNode
+  onClick: () => void
+  title?: string
+  primary?: boolean
+  disabled?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      disabled={disabled}
+      className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+        primary
+          ? 'bg-blue-600 text-white hover:bg-blue-700'
+          : 'border border-neutral-300 text-neutral-700 hover:bg-neutral-50'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
+/** 音源が入っているかの表示。マイクだけは押して切り替えられる */
+function SourceState({
+  label,
+  on,
+  onClick,
+  title,
+}: {
+  label: string
+  on: boolean
+  onClick?: () => void
+  title?: string
+}) {
+  const body = (
+    <>
+      <span className={`size-1.5 rounded-full ${on ? 'bg-emerald-500' : 'bg-neutral-300'}`} />
+      {label}
+    </>
+  )
+  const className = `inline-flex items-center gap-1.5 text-xs ${on ? 'text-neutral-700' : 'text-neutral-400'}`
+  if (!onClick) return <span className={className}>{body}</span>
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-pressed={on}
+      className={`${className} rounded px-1 py-0.5 hover:bg-neutral-100`}
+    >
+      {body}
+    </button>
+  )
+}
+
+/** 録り直し。押し間違いで音声が消えないよう一段挟む */
+function RedoControl({
+  confirming,
+  question,
+  onAsk,
+  onCancel,
+  onConfirm,
+}: {
+  confirming: boolean
+  question: string
+  onAsk: () => void
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  if (!confirming) {
+    return (
+      <button
+        type="button"
+        onClick={onAsk}
+        title="録音を消して、行に記録した時刻も外す"
+        className="rounded-md px-2 py-1 text-xs text-neutral-400 hover:bg-red-50 hover:text-red-700"
+      >
+        やり直す
+      </button>
+    )
+  }
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      <span className="text-xs text-neutral-600">{question}</span>
+      <button
+        type="button"
+        onClick={onConfirm}
+        className="rounded-md border border-red-200 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+      >
+        消す
+      </button>
+      <button
+        type="button"
+        onClick={onCancel}
+        className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+      >
+        やめる
+      </button>
+    </span>
+  )
+}
+
 const KIND_HINT: Record<MinuteKind, string> = {
   decision: '決まったこと',
   todo: '誰かがやること',
@@ -184,152 +298,108 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
         録音。空(事実)は録音に丸ごと任せて、人は雨・傘(決定・TODO・論点)だけ書く。
         逐語メモから解放されることが目的
       */}
-      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-neutral-200 px-3 py-2">
+      <div className="space-y-2 rounded-lg border border-neutral-200 px-3 py-2">
         {rec.status === 'recording' || rec.status === 'paused' ? (
           <>
-            <span
-              className={`flex items-center gap-2 text-sm font-medium ${
-                rec.status === 'recording' ? 'text-red-600' : 'text-neutral-500'
-              }`}
-            >
+            {/* 上段は状態だけ。押せるのはマイクの入切のみ */}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <span
-                className={`size-2 rounded-full ${
-                  rec.status === 'recording' ? 'animate-pulse bg-red-600' : 'bg-neutral-400'
+                className={`flex items-center gap-1.5 text-sm font-medium ${
+                  rec.status === 'recording' ? 'text-red-600' : 'text-neutral-500'
                 }`}
-              />
-              {rec.status === 'recording' ? '録音中' : '一時停止'} {formatOffset(rec.elapsedMs)}
-            </span>
-
-            <span className="text-xs text-neutral-500">
-              システム音声 {rec.systemAudio ? 'あり' : 'なし'}
-            </span>
-
-            {/* マイクは録音中でも切れる。自分の声を入れたくない場面があるため */}
-            <button
-              type="button"
-              onClick={rec.toggleMic}
-              className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                rec.micOn
-                  ? 'bg-neutral-900 text-white'
-                  : 'border border-neutral-300 text-neutral-500 hover:bg-neutral-50'
-              }`}
-              aria-pressed={rec.micOn}
-            >
-              マイク {rec.micOn ? 'ON' : 'OFF'}
-              <kbd
-                className={rec.micOn ? 'border-neutral-700 bg-neutral-800 text-neutral-300' : ''}
               >
-                Ctrl+Shift+M
-              </kbd>
-            </button>
-
-            {rec.status === 'recording' ? (
-              <button type="button" className="btn-ghost" onClick={rec.pause}>
-                一時停止 <kbd>Ctrl+E</kbd>
-              </button>
-            ) : (
-              <button type="button" className="btn-ghost" onClick={rec.resume}>
-                再開 <kbd>Ctrl+E</kbd>
-              </button>
-            )}
-            <button type="button" className="btn-primary" onClick={() => void rec.finish()}>
-              録音を終える <kbd className="border-blue-500 bg-blue-500 text-blue-50">Ctrl+Shift+E</kbd>
-            </button>
-            {confirmRedo ? (
-              <span className="flex items-center gap-2">
-                <span className="text-xs text-neutral-600">ここまでの音声を捨てる?</span>
-                <button
-                  type="button"
-                  className="btn-danger"
-                  onClick={() => {
-                    setConfirmRedo(false)
-                    void rec.discard()
-                  }}
-                >
-                  捨てる
-                </button>
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  onClick={() => setConfirmRedo(false)}
-                >
-                  やめる
-                </button>
+                <span
+                  className={`size-2 rounded-full ${
+                    rec.status === 'recording' ? 'animate-pulse bg-red-600' : 'bg-neutral-400'
+                  }`}
+                />
+                {rec.status === 'recording' ? '録音中' : '一時停止'}
+                <span className="font-mono tabular-nums">{formatOffset(rec.elapsedMs)}</span>
               </span>
-            ) : (
-              <button type="button" className="btn-danger" onClick={() => setConfirmRedo(true)}>
-                やり直す
-              </button>
-            )}
+              <SourceState label="システム" on={rec.systemAudio} />
+              {/* マイクは録音中でも切れる。自分の声を入れたくない場面があるため */}
+              <SourceState
+                label="マイク"
+                on={rec.micOn}
+                onClick={rec.toggleMic}
+                title="マイクの入切(Ctrl+Shift+M)"
+              />
+            </div>
+
+            {/* 下段は操作。狭いときはここだけが折り返す */}
+            <div className="flex flex-wrap items-center gap-2">
+              {rec.status === 'recording' ? (
+                <RecButton onClick={rec.pause} title="Ctrl+E">
+                  一時停止
+                </RecButton>
+              ) : (
+                <RecButton onClick={rec.resume} title="Ctrl+E">
+                  再開
+                </RecButton>
+              )}
+              <RecButton onClick={() => void rec.finish()} title="Ctrl+Shift+E" primary>
+                終える
+              </RecButton>
+              <span className="flex-1" />
+              <RedoControl
+                confirming={confirmRedo}
+                question="ここまでの音声を捨てる?"
+                onAsk={() => setConfirmRedo(true)}
+                onCancel={() => setConfirmRedo(false)}
+                onConfirm={() => {
+                  setConfirmRedo(false)
+                  void rec.discard()
+                }}
+              />
+            </div>
           </>
         ) : meeting.recording ? (
           <>
-            <span className="shrink-0 text-xs text-neutral-500">
-              録音あり{' '}
-              {meeting.recording.durationMs
-                ? `(${formatOffset(meeting.recording.durationMs)})`
-                : ''}
-            </span>
-            <audio
-              ref={rec.audioRef}
-              src={rec.audioUrl ?? undefined}
-              controls
-              preload="metadata"
-              className="h-8 min-w-0 flex-1"
-            />
-            {!rec.audioUrl && (
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => void rec.seekTo(0)}
-                disabled={rec.loadingAudio}
-              >
-                {rec.loadingAudio ? '読み込み中…' : '再生の準備'}
-              </button>
-            )}
-            {confirmRedo ? (
-              <span className="flex shrink-0 items-center gap-2">
-                <span className="text-xs text-neutral-600">録音を消して録り直す?</span>
-                <button
-                  type="button"
-                  className="btn-danger"
-                  onClick={() => {
-                    setConfirmRedo(false)
-                    void rec.discard()
-                  }}
-                >
-                  消す
-                </button>
-                <button type="button" className="btn-ghost" onClick={() => setConfirmRedo(false)}>
-                  やめる
-                </button>
+            <div className="flex items-center gap-2">
+              <span className="shrink-0 text-xs text-neutral-500">
+                録音{' '}
+                {meeting.recording.durationMs ? formatOffset(meeting.recording.durationMs) : ''}
               </span>
-            ) : (
-              <button
-                type="button"
-                className="btn-danger shrink-0"
-                onClick={() => setConfirmRedo(true)}
-                title="録音を消して、行に記録した時刻も外す"
-              >
-                やり直す
-              </button>
-            )}
+              <audio
+                ref={rec.audioRef}
+                src={rec.audioUrl ?? undefined}
+                controls
+                preload="metadata"
+                className="h-8 min-w-0 flex-1"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {!rec.audioUrl && (
+                <RecButton onClick={() => void rec.seekTo(0)} disabled={rec.loadingAudio}>
+                  {rec.loadingAudio ? '読み込み中…' : '再生の準備'}
+                </RecButton>
+              )}
+              <span className="flex-1" />
+              <RedoControl
+                confirming={confirmRedo}
+                question="録音を消して録り直す?"
+                onAsk={() => setConfirmRedo(true)}
+                onCancel={() => setConfirmRedo(false)}
+                onConfirm={() => {
+                  setConfirmRedo(false)
+                  void rec.discard()
+                }}
+              />
+            </div>
           </>
         ) : (
-          <>
-            <button
-              type="button"
-              className="btn-ghost"
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <RecButton
               onClick={() => void rec.start()}
               disabled={rec.status === 'stopping'}
+              title="Ctrl+E"
             >
-              録音を開始 <kbd>Ctrl+E</kbd>
-            </button>
+              録音を開始
+            </RecButton>
             <span className="text-xs text-neutral-400">
-              システム音声(相手の声)を常に録り、マイクは途中で切れる。書いた行から
-              {REWIND_SECONDS}秒前を聞き返せる
+              システム音声を録る。書いた行から{REWIND_SECONDS}秒前を聞き返せる
             </span>
-          </>
+          </div>
         )}
       </div>
 
@@ -346,7 +416,8 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
                 setKind(k)
                 captureRef.current?.focus()
               }}
-              className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+              title={`${MINUTE_KIND_LABEL[k]}に切り替え(Ctrl+${i + 1})`}
+              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                 kind === k
                   ? 'bg-neutral-900 text-white'
                   : 'border border-neutral-300 text-neutral-600 hover:bg-neutral-50'
@@ -354,11 +425,6 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
               aria-pressed={kind === k}
             >
               {MINUTE_KIND_LABEL[k]}
-              <kbd
-                className={kind === k ? 'border-neutral-700 bg-neutral-800 text-neutral-300' : ''}
-              >
-                Ctrl+{i + 1}
-              </kbd>
             </button>
           ))}
           <span className="ml-1 text-xs text-neutral-400">{KIND_HINT[kind]}</span>
