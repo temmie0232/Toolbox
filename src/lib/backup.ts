@@ -1,10 +1,14 @@
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { readTextFile, writeTextFile } from '../storage'
 import {
+  MINUTE_KIND_ORDER,
   TASK_STATUS_ORDER,
   type BackupFile,
+  type Meeting,
   type Memo,
   type MemoType,
+  type MinuteBlock,
+  type MinuteKind,
   type Task,
   type TaskStatus,
 } from '../types'
@@ -16,7 +20,11 @@ export function backupFileName(date = new Date()): string {
 }
 
 /** 保存ダイアログを出してJSONを書き出す。キャンセルされたら null */
-export async function exportBackup(tasks: Task[], memos: Memo[]): Promise<string | null> {
+export async function exportBackup(
+  tasks: Task[],
+  memos: Memo[],
+  meetings: Meeting[],
+): Promise<string | null> {
   const path = await save({
     title: 'バックアップの保存先',
     defaultPath: backupFileName(),
@@ -29,13 +37,21 @@ export async function exportBackup(tasks: Task[], memos: Memo[]): Promise<string
     exportedAt: new Date().toISOString(),
     tasks,
     memos,
+    meetings,
   }
   await writeTextFile(path, JSON.stringify(data, null, 2))
   return path
 }
 
+export interface PickedBackup {
+  path: string
+  tasks: Task[]
+  memos: Memo[]
+  meetings: Meeting[]
+}
+
 /** 開くダイアログを出してJSONを読む。キャンセルされたら null */
-export async function pickBackup(): Promise<{ path: string; tasks: Task[]; memos: Memo[] } | null> {
+export async function pickBackup(): Promise<PickedBackup | null> {
   const selected = await open({
     title: 'バックアップファイルを選ぶ',
     multiple: false,
@@ -65,11 +81,19 @@ function isMemoType(value: unknown): value is MemoType {
   return value === 'soraamekasa' || value === 'free'
 }
 
+function isMinuteKind(value: unknown): value is MinuteKind {
+  return typeof value === 'string' && (MINUTE_KIND_ORDER as string[]).includes(value)
+}
+
+function optionalStr(value: unknown): string | undefined {
+  return typeof value === 'string' && value ? value : undefined
+}
+
 /**
  * 読み込んだJSONを検証して正規化する。
  * 壊れたファイルで既存データを吹き飛ばさないよう、ここで弾く。
  */
-export function parseBackup(text: string): { tasks: Task[]; memos: Memo[] } {
+export function parseBackup(text: string): { tasks: Task[]; memos: Memo[]; meetings: Meeting[] } {
   let raw: unknown
   try {
     raw = JSON.parse(text)
@@ -132,5 +156,50 @@ export function parseBackup(text: string): { tasks: Task[]; memos: Memo[] } {
     }
   })
 
-  return { tasks, memos }
+  // 議事録は後から足した項目なので、無いバックアップも受け付ける
+  const rawMeetings = Array.isArray(data.meetings) ? data.meetings : []
+  const meetings: Meeting[] = rawMeetings.map((item, index) => {
+    const m = item as Partial<Meeting>
+    if (typeof m.id !== 'string') {
+      throw new BackupParseError(`${index + 1}件目の議事録にidがありません`)
+    }
+    const blocks: MinuteBlock[] = Array.isArray(m.blocks)
+      ? m.blocks
+          .filter((b): b is MinuteBlock => typeof b?.id === 'string')
+          .map((b) => ({
+            id: b.id,
+            kind: isMinuteKind(b.kind) ? b.kind : 'issue',
+            text: str(b.text),
+            assignee: optionalStr(b.assignee),
+            due: optionalStr(b.due),
+            done: bool(b.done),
+            // 消えたタスクへの参照は落とす
+            taskId:
+              typeof b.taskId === 'string' && taskIds.has(b.taskId) ? b.taskId : undefined,
+            offsetMs: typeof b.offsetMs === 'number' ? b.offsetMs : undefined,
+            createdAt: str(b.createdAt, new Date().toISOString()),
+          }))
+      : []
+    return {
+      id: m.id,
+      title: str(m.title, '(無題)'),
+      startedAt: str(m.startedAt, str(m.createdAt, new Date().toISOString())),
+      participants: str(m.participants),
+      blocks,
+      recording:
+        m.recording && typeof m.recording.fileName === 'string'
+          ? {
+              fileName: m.recording.fileName,
+              startedAt: str(m.recording.startedAt, new Date().toISOString()),
+              durationMs:
+                typeof m.recording.durationMs === 'number' ? m.recording.durationMs : undefined,
+              mimeType: str(m.recording.mimeType, 'audio/webm'),
+            }
+          : undefined,
+      createdAt: str(m.createdAt, new Date().toISOString()),
+      updatedAt: str(m.updatedAt, str(m.createdAt, new Date().toISOString())),
+    }
+  })
+
+  return { tasks, memos, meetings }
 }

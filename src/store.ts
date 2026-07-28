@@ -1,7 +1,15 @@
 import { useSyncExternalStore } from 'react'
 import { newId, now } from './lib/id'
 import { loadData, saveData } from './storage'
-import { EMPTY_SUBMIT_CHECK, type Memo, type MemoType, type Task } from './types'
+import {
+  EMPTY_SUBMIT_CHECK,
+  type Meeting,
+  type Memo,
+  type MemoType,
+  type MinuteBlock,
+  type MinuteKind,
+  type Task,
+} from './types'
 
 export interface StoreState {
   status: 'loading' | 'ready' | 'error'
@@ -10,11 +18,12 @@ export interface StoreState {
   saveError?: string
   tasks: Task[]
   memos: Memo[]
-  /** 最後にJSONバックアップを書き出した日時。長く空くと歯車に印を出す */
+  meetings: Meeting[]
+  /** 最後にJSONバックアップを書き出した日時。長く空くと印を出す */
   lastBackupAt?: string
 }
 
-let state: StoreState = { status: 'loading', tasks: [], memos: [] }
+let state: StoreState = { status: 'loading', tasks: [], memos: [], meetings: [] }
 const listeners = new Set<() => void>()
 
 function set(patch: Partial<StoreState>): void {
@@ -41,7 +50,9 @@ let saveChain: Promise<unknown> = Promise.resolve()
 
 function queueSave(): Promise<void> {
   // 実行時点の最新stateを書くので、連続操作は自然にまとめられる
-  const run = saveChain.then(() => saveData(state.tasks, state.memos, state.lastBackupAt))
+  const run = saveChain.then(() =>
+    saveData(state.tasks, state.memos, state.meetings, state.lastBackupAt),
+  )
   // 失敗は画面のどこにいても見えるように、グローバルに記録する
   // (自動保存化により、画面遷移後に失敗が返ってくることがあるため)
   saveChain = run.then(
@@ -64,15 +75,19 @@ export function getSaveError(): string | undefined {
   return state.saveError
 }
 
-type Draft = { tasks: Task[]; memos: Memo[] }
+type Draft = { tasks: Task[]; memos: Memo[]; meetings: Meeting[] }
 
 /**
  * 変更は必ずこれを通す。最新のstateから次のstateを作り、先にメモリを更新してから書き込む。
  * 「読んで → awaitして → 書き戻す」をやると、その隙間に入った操作が消える。
  */
 async function commit(update: (draft: Draft) => Partial<Draft>): Promise<void> {
-  const next = update({ tasks: state.tasks, memos: state.memos })
-  set({ tasks: next.tasks ?? state.tasks, memos: next.memos ?? state.memos })
+  const next = update({ tasks: state.tasks, memos: state.memos, meetings: state.meetings })
+  set({
+    tasks: next.tasks ?? state.tasks,
+    memos: next.memos ?? state.memos,
+    meetings: next.meetings ?? state.meetings,
+  })
   await queueSave()
 }
 
@@ -92,6 +107,7 @@ export async function reload(): Promise<void> {
       error: undefined,
       tasks: data.tasks,
       memos: data.memos,
+      meetings: data.meetings,
       lastBackupAt: data.lastBackupAt,
     })
   } catch (e) {
@@ -203,14 +219,100 @@ export function removeMemo(id: string): Promise<void> {
   return commit(({ memos }) => ({ memos: memos.filter((m) => m.id !== id) }))
 }
 
+// ---- 議事録 ----
+
+export function createMeeting(input: { title: string; participants: string }): Promise<Meeting> {
+  const timestamp = now()
+  const meeting: Meeting = {
+    id: newId(),
+    title: input.title.trim(),
+    startedAt: timestamp,
+    participants: input.participants,
+    blocks: [],
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
+  return commit(({ meetings }) => ({ meetings: [...meetings, meeting] })).then(() => meeting)
+}
+
+export function updateMeetingWith(
+  id: string,
+  makePatch: (meeting: Meeting) => Partial<Omit<Meeting, 'id' | 'createdAt'>>,
+): Promise<void> {
+  return commit(({ meetings }) => {
+    const current = meetings.find((m) => m.id === id)
+    if (!current) return {}
+    const next: Meeting = { ...current, ...makePatch(current), updatedAt: now() }
+    return { meetings: meetings.map((m) => (m.id === id ? next : m)) }
+  })
+}
+
+export function addMinuteBlock(
+  meetingId: string,
+  input: { kind: MinuteKind; text: string; offsetMs?: number },
+): Promise<void> {
+  const block: MinuteBlock = {
+    id: newId(),
+    kind: input.kind,
+    text: input.text.trim(),
+    offsetMs: input.offsetMs,
+    createdAt: now(),
+  }
+  return updateMeetingWith(meetingId, (m) => ({ blocks: [...m.blocks, block] }))
+}
+
+export function updateMinuteBlock(
+  meetingId: string,
+  blockId: string,
+  patch: Partial<Omit<MinuteBlock, 'id' | 'createdAt'>>,
+): Promise<void> {
+  return updateMeetingWith(meetingId, (m) => ({
+    blocks: m.blocks.map((b) => (b.id === blockId ? { ...b, ...patch } : b)),
+  }))
+}
+
+export function removeMinuteBlock(meetingId: string, blockId: string): Promise<void> {
+  return updateMeetingWith(meetingId, (m) => ({
+    blocks: m.blocks.filter((b) => b.id !== blockId),
+  }))
+}
+
+export function removeMeeting(id: string): Promise<void> {
+  return commit(({ meetings }) => ({ meetings: meetings.filter((m) => m.id !== id) }))
+}
+
+/**
+ * 議事録のTODOをタスクに変換する。
+ * 会議で受け取った仕事も、結局は4つの箱を埋めるところから始まるため。
+ */
+export async function convertTodoToTask(meetingId: string, blockId: string): Promise<Task | null> {
+  const meeting = state.meetings.find((m) => m.id === meetingId)
+  const block = meeting?.blocks.find((b) => b.id === blockId)
+  if (!meeting || !block || block.taskId) return null
+
+  const task = await createTask({
+    title: block.text,
+    purpose: `${meeting.title || '会議'}(${new Date(meeting.startedAt).toLocaleDateString('ja-JP')})で決まったTODO`,
+    deliverable: '',
+    deadline: block.due,
+    questionTexts: block.assignee ? [] : ['自分が担当でよいか'],
+  })
+  await updateMinuteBlock(meetingId, blockId, { taskId: task.id })
+  return task
+}
+
 // ---- バックアップ(F5)----
 
-export function replaceAllData(tasks: Task[], memos: Memo[]): Promise<void> {
-  return commit(() => ({ tasks, memos }))
+export function replaceAllData(
+  tasks: Task[],
+  memos: Memo[],
+  meetings: Meeting[],
+): Promise<void> {
+  return commit(() => ({ tasks, memos, meetings }))
 }
 
 export function clearAllData(): Promise<void> {
-  return commit(() => ({ tasks: [], memos: [] }))
+  return commit(() => ({ tasks: [], memos: [], meetings: [] }))
 }
 
 /** バックアップを書き出した(または読み込んだ)ことを記録する */

@@ -66,6 +66,59 @@ export interface Memo {
   updatedAt: string
 }
 
+/**
+ * 議事録のブロック。決定・TODO・論点の3種だけ。
+ * 逐語録は書かない。発言を全部追おうとすると追いつかなくなるため。
+ */
+export type MinuteKind = 'decision' | 'todo' | 'issue'
+
+export const MINUTE_KIND_LABEL: Record<MinuteKind, string> = {
+  decision: '決定',
+  todo: 'TODO',
+  issue: '論点',
+}
+
+export const MINUTE_KIND_ORDER: MinuteKind[] = ['decision', 'todo', 'issue']
+
+export interface MinuteBlock {
+  id: string
+  kind: MinuteKind
+  text: string
+  /** TODO: 担当 */
+  assignee?: string
+  /** TODO: 期限(YYYY-MM-DD) */
+  due?: string
+  /** TODO: 完了したか / 論点: 決着したか */
+  done?: boolean
+  /** TODOから作ったタスクのid。二重に作らないための印 */
+  taskId?: string
+  /** 録音開始からの経過ミリ秒。録音していなければ undefined */
+  offsetMs?: number
+  createdAt: string
+}
+
+export interface Recording {
+  /** 音声ファイル名(録音フォルダ内) */
+  fileName: string
+  /** 録音を開始した時刻 */
+  startedAt: string
+  durationMs?: number
+  mimeType: string
+}
+
+export interface Meeting {
+  id: string
+  title: string
+  /** 会議の日時(ISO) */
+  startedAt: string
+  /** 参加者。個人用なので自由記述でよい */
+  participants: string
+  blocks: MinuteBlock[]
+  recording?: Recording
+  createdAt: string
+  updatedAt: string
+}
+
 /** JSON書き出し/読み込み(F5)の形式 */
 export interface BackupFile {
   app: 'tool'
@@ -73,6 +126,8 @@ export interface BackupFile {
   exportedAt: string
   tasks: Task[]
   memos: Memo[]
+  /** v0.1のバックアップには無い */
+  meetings?: Meeting[]
 }
 
 export const EMPTY_SUBMIT_CHECK: SubmitCheck = {
@@ -84,4 +139,13 @@ export const EMPTY_SUBMIT_CHECK: SubmitCheck = {
 /** 未解決の疑問が1件でもあれば「要確認」 */
 export function needsConfirmation(task: Task): boolean {
   return task.questions.some((q) => !q.resolved)
+}
+
+/** 一覧に出す議事録の1行要約 */
+export function meetingSummary(meeting: Meeting): string {
+  const counts = MINUTE_KIND_ORDER.map((kind) => {
+    const n = meeting.blocks.filter((b) => b.kind === kind).length
+    return n > 0 ? `${MINUTE_KIND_LABEL[kind]}${n}` : ''
+  }).filter(Boolean)
+  return counts.length > 0 ? counts.join(' / ') : '空'
 }

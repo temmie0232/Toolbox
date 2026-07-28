@@ -21,8 +21,10 @@ const GROUPS: Group[] = [
     items: [
       { keys: ['t'], label: 'タスク一覧' },
       { keys: ['l'], label: 'メモ一覧' },
+      { keys: ['r'], label: '議事録一覧' },
       { keys: ['n'], label: '新しいタスク' },
       { keys: ['m'], label: '新しいメモ' },
+      { keys: ['Shift', 'R'], label: '新しい議事録' },
       { keys: [','], label: '設定(バックアップもここ)' },
     ],
   },
@@ -49,6 +51,15 @@ const GROUPS: Group[] = [
     items: [
       { keys: ['1', '2'], label: 'テンプレ切替(空雨傘 / 自由)' },
       { keys: ['h'], label: '戻る(Escでも可)' },
+    ],
+  },
+  {
+    title: '議事録',
+    items: [
+      { keys: ['Enter'], label: '入力中の行を確定して追加' },
+      { keys: ['Ctrl', '1〜3'], label: '決定 / TODO / 論点 を切替' },
+      { keys: ['a'], label: '入力欄へ戻る' },
+      { keys: ['Esc'], label: '入力を消す → もう一度で一覧へ' },
     ],
   },
   {

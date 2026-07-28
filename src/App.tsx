@@ -2,6 +2,9 @@ import { enable, isEnabled } from '@tauri-apps/plugin-autostart'
 import { useEffect } from 'react'
 import { Route, HashRouter as Router, Routes } from 'react-router-dom'
 import { Layout } from './components/Layout'
+import { MeetingDetail } from './pages/MeetingDetail'
+import { MeetingList } from './pages/MeetingList'
+import { MeetingNew } from './pages/MeetingNew'
 import { MemoDetail, MemoNew } from './pages/MemoEdit'
 import { MemoList } from './pages/MemoList'
 import { Settings } from './pages/Settings'
@@ -62,6 +65,9 @@ export function App() {
           <Route path="memos" element={<MemoList />} />
           <Route path="memos/new" element={<MemoNew />} />
           <Route path="memos/:id" element={<MemoDetail />} />
+          <Route path="meetings" element={<MeetingList />} />
+          <Route path="meetings/new" element={<MeetingNew />} />
+          <Route path="meetings/:id" element={<MeetingDetail />} />
           <Route path="settings" element={<Settings />} />
           <Route path="*" element={<TaskList />} />
         </Route>

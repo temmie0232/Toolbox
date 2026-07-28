@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Memo, Task } from './types'
+import type { Meeting, Memo, Task } from './types'
 
 /** ディスクに置くファイルの形。バックアップJSONと同じ構造 + アプリの運用メタ情報 */
 export interface PersistedData {
@@ -7,6 +7,7 @@ export interface PersistedData {
   version: 1
   tasks: Task[]
   memos: Memo[]
+  meetings?: Meeting[]
   meta?: {
     /** 最後にJSONバックアップを書き出した日時(放置検知に使う) */
     lastBackupAt?: string
@@ -16,13 +17,14 @@ export interface PersistedData {
 export interface LoadedData {
   tasks: Task[]
   memos: Memo[]
+  meetings: Meeting[]
   lastBackupAt?: string
 }
 
 /** %APPDATA%\jp.temmie0232.tool\data.json を読む。未作成なら空データ */
 export async function loadData(): Promise<LoadedData> {
   const raw = await invoke<string | null>('load_data')
-  if (!raw) return { tasks: [], memos: [] }
+  if (!raw) return { tasks: [], memos: [], meetings: [] }
   const parsed = JSON.parse(raw) as Partial<PersistedData>
   // ファイルはあるのに形が違う = 壊れている。空扱いにすると次の保存で
   // 上書きしてしまうので、ここで止める(エラー画面になり、UIは操作できない)
@@ -40,6 +42,8 @@ export async function loadData(): Promise<LoadedData> {
   return {
     tasks: parsed.tasks,
     memos: parsed.memos,
+    // 議事録は後から足したので、古いファイルには無い
+    meetings: Array.isArray(parsed.meetings) ? parsed.meetings : [],
     lastBackupAt:
       typeof parsed.meta?.lastBackupAt === 'string' ? parsed.meta.lastBackupAt : undefined,
   }
@@ -48,6 +52,7 @@ export async function loadData(): Promise<LoadedData> {
 export async function saveData(
   tasks: Task[],
   memos: Memo[],
+  meetings: Meeting[],
   lastBackupAt?: string,
 ): Promise<void> {
   const data: PersistedData = {
@@ -55,6 +60,7 @@ export async function saveData(
     version: 1,
     tasks,
     memos,
+    meetings,
     meta: lastBackupAt ? { lastBackupAt } : undefined,
   }
   await invoke('save_data', { contents: JSON.stringify(data, null, 2) })

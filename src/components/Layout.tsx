@@ -86,6 +86,8 @@ export function Layout() {
       m: () => go('/memos/new'),
       t: () => go('/'),
       l: () => go('/memos'),
+      r: () => go('/meetings'),
+      R: () => go('/meetings/new'),
       b: () => go('/settings'),
       ',': () => go('/settings'),
       '?': () => setHelpOpen(true),
