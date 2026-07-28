@@ -9,6 +9,35 @@
   html {
     font-family: var(--font-sans);
     color-scheme: light;
+    /*
+      スクロールバーの有無で中身の幅が変わらないようにする。
+      これがないと、縦に長い画面へ移った瞬間に上の取っ手が左へずれる
+    */
+    scrollbar-gutter: stable both-edges;
+  }
+
+  /* 既定のスクロールバーは矢印付きで太い。中身の邪魔をしない細さにする */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-neutral-300;
+    border: 3px solid white;
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-neutral-400;
+  }
+
+  ::-webkit-scrollbar-button {
+    display: none;
   }
 
   body {
