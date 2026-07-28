@@ -4,10 +4,10 @@ import { registerFlush } from '../store'
 import type { Recording } from '../types'
 
 /**
- * 人は「聞いた後に」書く。記録時刻ぴったりに戻すと発言を過ぎているので、
- * この秒数だけ手前から再生する。
+ * 行を押したときに、記録時刻より何秒手前から再生するか。
+ * 0 なら押した時刻ちょうどへ飛ぶ。
  */
-export const REWIND_SECONDS = 15
+export const REWIND_SECONDS = 0
 
 /** 軽さ優先。ただし将来の文字起こし(16kHz以上のモノラルが標準入力)に困らない下限は守る */
 const MIC_CONSTRAINTS: MediaTrackConstraints = {
@@ -323,9 +323,11 @@ export function useRecording(
   // src の差し替えで再生位置も飛ぶ
   const loadingRef = useRef<Promise<void> | null>(null)
 
-  /** 録音ファイルを読み込んで再生できる状態にする */
+  /** 録音ファイルを読み込んで、実際に再生できる状態になるまで待つ */
   const ensureAudio = useCallback(async (): Promise<HTMLAudioElement | null> => {
     if (!recording) return null
+    const audio = audioRef.current
+    if (!audio) return null
     if (loadingRef.current) await loadingRef.current
     if (!objectUrlRef.current) {
       setLoadingAudio(true)
@@ -351,11 +353,27 @@ export function useRecording(
       loadingRef.current = null
       if (!objectUrlRef.current) return null
     }
-    return audioRef.current
+
+    // src の反映はReactの再描画待ちになる。ここで直に入れて、
+    // 読めるようになるまで待つ。待たずにシークすると初回の1回が空振りする
+    const url = objectUrlRef.current
+    if (url && audio.src !== url) {
+      audio.src = url
+      await new Promise<void>((resolve) => {
+        const done = () => {
+          audio.removeEventListener('loadedmetadata', done)
+          resolve()
+        }
+        audio.addEventListener('loadedmetadata', done)
+        // 長さが入っていないWebMだと発火しないことがある。待ち続けない
+        setTimeout(done, 3000)
+      })
+    }
+    return audio
   }, [recording])
 
   /**
-   * 録音しながら書いたブロックの時刻へ飛ぶ。
+   * 録音しながら書いた行の時刻へ飛ぶ。
    * 録りっぱなしのWebMは長さが入っていないことがあり、そのままでは頭出しできない。
    * 一度とんでもない位置へ飛ばして長さを確定させてから、目的の位置へ移す。
    */
@@ -363,6 +381,7 @@ export function useRecording(
     async (offsetMs: number) => {
       const audio = await ensureAudio()
       if (!audio) return
+
       if (!Number.isFinite(audio.duration)) {
         await new Promise<void>((resolve) => {
           const onUpdate = () => {
@@ -377,9 +396,19 @@ export function useRecording(
             resolve()
           }, 1500)
         })
+        audio.currentTime = 0
       }
-      audio.currentTime = Math.max(0, offsetMs / 1000 - REWIND_SECONDS)
-      void audio.play()
+
+      // 録音が長さより後ろを指していても、末尾で止める
+      const target = Math.max(0, offsetMs / 1000 - REWIND_SECONDS)
+      audio.currentTime = Number.isFinite(audio.duration)
+        ? Math.min(target, Math.max(0, audio.duration - 0.1))
+        : target
+      try {
+        await audio.play()
+      } catch (e) {
+        setError(`再生できませんでした: ${e instanceof Error ? e.message : String(e)}`)
+      }
     },
     [ensureAudio],
   )

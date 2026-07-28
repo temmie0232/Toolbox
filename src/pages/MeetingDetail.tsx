@@ -397,7 +397,7 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
               録音を開始
             </RecButton>
             <span className="text-xs text-neutral-400">
-              システム音声を録る。書いた行から{REWIND_SECONDS}秒前を聞き返せる
+              システム音声を録る。録音中に書いた行から、その時点を聞き返せる
             </span>
           </div>
         )}
@@ -510,7 +510,11 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
                           type="button"
                           onClick={() => void rec.seekTo(block.offsetMs!)}
                           className="mt-0.5 shrink-0 font-mono text-xs text-blue-600 hover:underline"
-                          title={`この行を書いた${REWIND_SECONDS}秒前から再生`}
+                          title={
+                            REWIND_SECONDS > 0
+                              ? `この行を書いた${REWIND_SECONDS}秒前から再生`
+                              : 'この行を書いた時点から再生'
+                          }
                         >
                           ▶ {formatOffset(block.offsetMs)}
                         </button>
