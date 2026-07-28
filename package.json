@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "app": "tauri dev",
+    "exe": "tauri build --no-bundle",
     "bundle": "tauri build",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
