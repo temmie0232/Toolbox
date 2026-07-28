@@ -15,16 +15,12 @@ export const SHORTCUT_GROUPS: Group[] = [
     ],
   },
   {
-    title: '画面切替',
+    title: '画面切替(小文字=一覧 / 大文字=新規)',
     items: [
-      { keys: ['t'], label: 'タスク一覧' },
-      { keys: ['l'], label: 'メモ一覧' },
-      { keys: ['r'], label: '議事録一覧' },
-      { keys: ['s'], label: 'ブレスト一覧' },
-      { keys: ['n'], label: '新しいタスク' },
-      { keys: ['m'], label: '新しいメモ' },
-      { keys: ['Shift', 'R'], label: '新しい議事録' },
-      { keys: ['Shift', 'S'], label: '新しいブレスト' },
+      { keys: ['t', 'Shift', 'T'], label: 'タスク' },
+      { keys: ['m', 'Shift', 'M'], label: 'メモ' },
+      { keys: ['r', 'Shift', 'R'], label: '議事録' },
+      { keys: ['s', 'Shift', 'S'], label: 'ブレスト' },
       { keys: [','], label: '設定(この画面)' },
     ],
   },
@@ -39,26 +35,25 @@ export const SHORTCUT_GROUPS: Group[] = [
     ],
   },
   {
+    title: '画面内の切替(Ctrl+数字)',
+    items: [
+      { keys: ['Ctrl', '1〜4'], label: 'ステータス(タスク詳細)' },
+      { keys: ['Ctrl', '1〜3'], label: 'テンプレ(メモ編集)' },
+      { keys: ['Ctrl', '1〜3'], label: '決定 / TODO / 論点(議事録)' },
+    ],
+  },
+  {
     title: 'タスク詳細',
     items: [
-      { keys: ['1', '4'], label: 'ステータス変更(受領〜完了)' },
       { keys: ['a'], label: '疑問点の追加欄へ' },
       { keys: ['c'], label: '未解決の疑問点を確認用にコピー' },
       { keys: ['h'], label: '一覧へ戻る(Escでも可)' },
     ],
   },
   {
-    title: 'メモ編集',
-    items: [
-      { keys: ['1', '3'], label: 'テンプレ切替(空雨傘 / 結論ファースト / 自由)' },
-      { keys: ['h'], label: '戻る(Escでも可)' },
-    ],
-  },
-  {
     title: '議事録',
     items: [
       { keys: ['Enter'], label: '入力中の行を確定して追加' },
-      { keys: ['Ctrl', '1〜3'], label: '決定 / TODO / 論点 を切替(入力欄で)' },
       { keys: ['Ctrl', 'E'], label: '録音の開始 / 一時停止・再開' },
       { keys: ['Ctrl', 'Shift', 'E'], label: '録音を終える(確定)' },
       { keys: ['Ctrl', 'Shift', 'M'], label: 'マイクの入 / 切(録音中も可)' },

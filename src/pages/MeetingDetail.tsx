@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { InlineText } from '../components/InlineText'
 import { formatDateTime } from '../lib/date'
 import { REWIND_SECONDS, formatOffset, useRecording } from '../lib/useRecording'
-import { useShortcuts } from '../lib/useShortcuts'
+import { useNumberShortcuts, useShortcuts } from '../lib/useShortcuts'
 import {
   addMinuteBlock,
   clearMeetingRecording,
@@ -257,6 +257,10 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
   )
   useShortcuts(shortcuts)
 
+  // Ctrl+1〜3 で種別切替。入力欄から手を離さずに切り替えられる
+  const kindHandlers = useMemo(() => MINUTE_KIND_ORDER.map((k) => () => setKind(k)), [])
+  useNumberShortcuts(kindHandlers)
+
   const grouped = useMemo(
     () =>
       MINUTE_KIND_ORDER.map((k) => ({
@@ -452,11 +456,7 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
               setText('')
               return
             }
-            // 入力欄から手を離さずに種別を変える
-            if (e.ctrlKey && ['1', '2', '3'].includes(e.key)) {
-              e.preventDefault()
-              setKind(MINUTE_KIND_ORDER[Number(e.key) - 1])
-            }
+            // 種別の切替(Ctrl+1〜3)は画面全体で拾っているので、ここでは何もしない
           }}
           placeholder="ここに放り込む(Enterで確定)"
           aria-label="議事録に追加"

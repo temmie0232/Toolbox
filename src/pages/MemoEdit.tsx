@@ -4,6 +4,7 @@ import { Field } from '../components/Field'
 import { formatDateTime } from '../lib/date'
 import {
   useDiscardGuard,
+  useNumberShortcuts,
   useSaveShortcut,
   useShortcuts,
   type ShortcutMap,
@@ -214,17 +215,19 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
   const { armed, onEscape, disarm } = useDiscardGuard(dirty, back)
 
   const shortcuts = useMemo<ShortcutMap>(() => {
-    if (isEdit) {
-      const map: ShortcutMap = { Escape: leaveEdit, h: leaveEdit }
-      TYPE_KEYS.forEach(({ type: t, key }) => {
-        map[key] = () => setType(t)
-      })
-      return map
-    }
-    const map: ShortcutMap = { Escape: onEscape }
+    const map: ShortcutMap = { Escape: isEdit ? leaveEdit : onEscape }
+    // 既存メモは自動保存なので、hでそのまま戻れる。新規は取消の確認を挟む
+    if (isEdit) map.h = leaveEdit
     return map
   }, [isEdit, leaveEdit, onEscape])
   useShortcuts(shortcuts)
+
+  // Ctrl+1〜3 でテンプレ切替。本文を書いている最中でも切り替えられる
+  const typeHandlers = useMemo(
+    () => TYPE_KEYS.map(({ type: t }) => () => setType(t)),
+    [],
+  )
+  useNumberShortcuts(typeHandlers)
 
   const setReason = (index: number, value: string) =>
     setReasons((prev) => prev.map((r, i) => (i === index ? value : r)))
@@ -242,7 +245,8 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
                 key={value}
                 type="button"
                 onClick={() => setType(value)}
-                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                title={`${MEMO_TYPE_LABEL[value]}に切り替え(Ctrl+${key})`}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                   type === value
                     ? 'bg-neutral-900 text-white'
                     : 'border border-neutral-300 text-neutral-600 hover:bg-neutral-50'
@@ -250,15 +254,6 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
                 aria-pressed={type === value}
               >
                 {MEMO_TYPE_LABEL[value]}
-                {isEdit && (
-                  <kbd
-                    className={
-                      type === value ? 'border-neutral-700 bg-neutral-800 text-neutral-300' : ''
-                    }
-                  >
-                    {key}
-                  </kbd>
-                )}
               </button>
             ))}
           </div>

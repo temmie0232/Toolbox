@@ -97,15 +97,15 @@ export function Layout() {
 
   const shortcuts = useMemo(
     () => ({
-      n: () => go('/tasks/new'),
-      m: () => go('/memos/new'),
+      // 小文字が一覧、大文字が新規。4種類とも同じ規則にする
       t: () => go('/'),
-      l: () => go('/memos'),
+      T: () => go('/tasks/new'),
+      m: () => go('/memos'),
+      M: () => go('/memos/new'),
       r: () => go('/meetings'),
       R: () => go('/meetings/new'),
       s: () => go('/brainstorms'),
       S: () => go('/brainstorms/new'),
-      b: () => go('/settings'),
       ',': () => go('/settings'),
       '?': () => setHelpOpen(true),
       Escape: () => setHelpOpen(false),

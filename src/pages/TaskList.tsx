@@ -59,7 +59,7 @@ export function TaskList() {
         <div className="rounded-lg border border-dashed border-neutral-300 px-6 py-12 text-center">
           <p className="text-sm text-neutral-600">まだタスクがありません。</p>
           <p className="mt-1 text-xs text-neutral-500">
-            タスクを振られたら、席に戻ってすぐ <kbd>n</kbd> で4つの箱を埋める。
+            タスクを振られたら、席に戻ってすぐ <kbd>Shift</kbd> <kbd>T</kbd> で4つの箱を埋める。
           </p>
         </div>
       )}

@@ -32,7 +32,7 @@ export function MemoList() {
         <div className="rounded-lg border border-dashed border-neutral-300 px-6 py-12 text-center">
           <p className="text-sm text-neutral-600">まだメモがありません。</p>
           <p className="mt-1 text-xs text-neutral-500">
-            考えが散らかったら <kbd>m</kbd> で空・雨・傘の3枠に放り込む。
+            考えが散らかったら <kbd>Shift</kbd> <kbd>M</kbd> で空・雨・傘の3枠に放り込む。
           </p>
         </div>
       )}

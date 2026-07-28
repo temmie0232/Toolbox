@@ -6,7 +6,7 @@ import { Field } from '../components/Field'
 import { formatDateTime } from '../lib/date'
 import { newId } from '../lib/id'
 import { memoSummary } from '../lib/memoSummary'
-import { useSaveShortcut, useShortcuts } from '../lib/useShortcuts'
+import { useNumberShortcuts, useSaveShortcut, useShortcuts } from '../lib/useShortcuts'
 import { registerFlush, removeTask, updateTaskWith, useStore } from '../store'
 import {
   MEMO_TYPE_LABEL,
@@ -154,17 +154,20 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
     () => ({
       Escape: leave,
       h: leave,
-      '1': () => setStatus('received'),
-      '2': () => setStatus('in_progress'),
-      '3': () => setStatus('draft_reviewed'),
-      '4': () => setStatus('done'),
       // vim風: a(append)で疑問点の追加欄へ、cで確認文コピー
       a: () => questionInputRef.current?.focus(),
       c: () => void copyRef.current?.(),
     }),
-    [leave, setStatus],
+    [leave],
   )
   useShortcuts(shortcuts)
+
+  // Ctrl+1〜4 でステータス。目的や完成形を書いている最中でも切り替えられる
+  const statusHandlers = useMemo(
+    () => TASK_STATUS_ORDER.map((s) => () => setStatus(s)),
+    [setStatus],
+  )
+  useNumberShortcuts(statusHandlers)
 
   // 疑問点・チェック類は「最新のtask」を元に差分を作る(連続操作で前の変更が消えないように)
   const toggleQuestion = (questionId: string) =>
@@ -239,7 +242,8 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
               key={s}
               type="button"
               onClick={() => setStatus(s)}
-              className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+              title={`${TASK_STATUS_LABEL[s]}にする(Ctrl+${i + 1})`}
+              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                 task.status === s
                   ? 'bg-neutral-900 text-white'
                   : 'border border-neutral-300 text-neutral-600 hover:bg-neutral-50'
@@ -247,13 +251,6 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
               aria-pressed={task.status === s}
             >
               {TASK_STATUS_LABEL[s]}
-              <kbd
-                className={
-                  task.status === s ? 'border-neutral-700 bg-neutral-800 text-neutral-300' : ''
-                }
-              >
-                {i + 1}
-              </kbd>
             </button>
           ))}
           <span className="ml-2 text-xs text-neutral-400">{dirty ? '保存中…' : '保存済み'}</span>

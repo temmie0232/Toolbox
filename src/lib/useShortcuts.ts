@@ -63,6 +63,28 @@ export function useShortcuts(map: ShortcutMap, enabled = true): void {
   }, [map, active])
 }
 
+/**
+ * Ctrl+数字。その画面の主要な切り替え(ステータス・テンプレ・種別)に使う。
+ * 素の数字だと入力欄にいる間は効かないので、修飾キーを付けてどこでも効くようにする。
+ */
+export function useNumberShortcuts(handlers: (() => void)[], enabled = true): void {
+  const suspended = useShortcutsSuspended()
+  const active = enabled && !suspended
+
+  useEffect(() => {
+    if (!active) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || e.altKey || e.shiftKey || e.metaKey) return
+      const index = Number(e.key) - 1
+      if (!Number.isInteger(index) || index < 0 || index >= handlers.length) return
+      e.preventDefault()
+      handlers[index]()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [handlers, active])
+}
+
 /** Ctrl+Enter(Macは Cmd+Enter)で保存。入力欄の中でも効く */
 export function useSaveShortcut(save: () => void, enabled = true): void {
   const suspended = useShortcutsSuspended()
