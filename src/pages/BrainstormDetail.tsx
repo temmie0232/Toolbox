@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { InlineText } from '../components/InlineText'
+import { TextBox } from '../components/TextBox'
+import { useInitialMode, useModeActions, useOnExitInsert } from '../lib/mode'
 import { useShortcuts } from '../lib/useShortcuts'
 import {
   addBrainCard,
@@ -25,6 +27,13 @@ function GroupInput({ value, onCommit }: { value: string; onCommit: (value: stri
     if (!editing) setDraft(value)
   }, [value, editing])
 
+  // Esc で入力モードを抜けたら書きかけを捨てる
+  useOnExitInsert(() => {
+    if (!editing) return
+    setDraft(value)
+    setEditing(false)
+  })
+
   const commit = () => {
     setEditing(false)
     const next = draft.trim()
@@ -32,7 +41,7 @@ function GroupInput({ value, onCommit }: { value: string; onCommit: (value: stri
   }
 
   return (
-    <input
+    <TextBox
       className="w-40 shrink-0 rounded border border-neutral-300 px-2 py-1 text-xs"
       value={draft}
       list="brain-groups"
@@ -48,12 +57,6 @@ function GroupInput({ value, onCommit }: { value: string; onCommit: (value: stri
         if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
           e.preventDefault()
           commit()
-        } else if (e.key === 'Escape') {
-          e.stopPropagation()
-          if (!e.nativeEvent.isComposing) {
-            setDraft(value)
-            setEditing(false)
-          }
         }
       }}
     />
@@ -88,6 +91,9 @@ export function BrainstormDetail() {
 
 function BrainstormBody({ brainstorm }: { brainstorm: Brainstorm }) {
   const navigate = useNavigate()
+  const { enterInsert } = useModeActions()
+  // 始まっているなら、開いた瞬間から出せる状態にする
+  useInitialMode(brainstorm.startedAt ? 'insert' : 'normal')
   const [text, setText] = useState('')
   const [error, setError] = useState('')
   const [grouping, setGrouping] = useState(false)
@@ -131,7 +137,20 @@ function BrainstormBody({ brainstorm }: { brainstorm: Brainstorm }) {
   const start = () =>
     void run(() =>
       updateBrainstormWith(brainstorm.id, () => ({ startedAt: new Date().toISOString() })),
-    ).then(() => inputRef.current?.focus())
+    )
+
+  /**
+   * 始めたら入力欄へ手を移す。
+   * 入力欄は startedAt が入ってから描かれるので、押した直後ではまだ無い。
+   * 描かれたのを見てから移る
+   */
+  const started = Boolean(brainstorm.startedAt)
+  const wasStarted = useRef(started)
+  useEffect(() => {
+    if (!started || wasStarted.current) return
+    wasStarted.current = true
+    enterInsert(inputRef.current)
+  }, [started, enterInsert])
 
   const add = async () => {
     const value = text.trim()
@@ -140,13 +159,21 @@ function BrainstormBody({ brainstorm }: { brainstorm: Brainstorm }) {
     if (ok) setText('')
   }
 
+  // 打ちかけのカードを Esc で抱えたまま画面を出ないようにする。
+  // 入力中の Esc は入力モードを抜けるだけなので、ここへ来るのは移動モードのEscだけ
+  const textRef = useRef('')
+  textRef.current = text
+
   const shortcuts = useMemo(
     () => ({
-      Escape: () => navigate('/brainstorms'),
+      Escape: () => {
+        if (textRef.current) setText('')
+        else navigate('/brainstorms')
+      },
       h: () => navigate('/brainstorms'),
-      a: () => inputRef.current?.focus(),
+      a: () => enterInsert(inputRef.current),
     }),
-    [navigate],
+    [navigate, enterInsert],
   )
   useShortcuts(shortcuts)
 
@@ -206,7 +233,7 @@ function BrainstormBody({ brainstorm }: { brainstorm: Brainstorm }) {
               {brainstorm.limitMinutes}分で始める
             </button>
           ) : (
-            <input
+            <TextBox
               ref={inputRef}
               className="box-input"
               value={text}
@@ -215,17 +242,8 @@ function BrainstormBody({ brainstorm }: { brainstorm: Brainstorm }) {
                 if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
                   e.preventDefault()
                   void add()
-                  return
                 }
-                // 変換をEscで取り消しただけのときに、入力まで消さない
-                if (e.key === 'Escape' && e.nativeEvent.isComposing) {
-                  e.stopPropagation()
-                  return
-                }
-                if (e.key === 'Escape' && text) {
-                  e.stopPropagation()
-                  setText('')
-                }
+                // Esc は入力モードを抜けるだけ(画面は動かない)
               }}
               placeholder={timeUp ? '時間切れ。まだ出せるなら続けてよい' : '思いついたまま(Enterで確定)'}
               aria-label="カードを追加"
@@ -248,6 +266,7 @@ function BrainstormBody({ brainstorm }: { brainstorm: Brainstorm }) {
                 <span>{card.text}</span>
                 <button
                   type="button"
+                  data-secondary
                   onClick={() => void run(() => removeBrainCard(brainstorm.id, card.id))}
                   className="text-xs text-neutral-300 opacity-0 group-hover:opacity-100 hover:text-red-600 focus:opacity-100"
                   aria-label="このカードを削除"

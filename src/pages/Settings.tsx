@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { ShortcutList } from '../components/ShortcutList'
 import { exportBackup, pickBackup } from '../lib/backup'
 import { formatDateTime } from '../lib/date'
+import { useInitialMode } from '../lib/mode'
 import { dataFilePath, openDataDir } from '../storage'
 import { clearAllData, markBackedUp, replaceAllData, useStore } from '../store'
 
@@ -10,6 +11,7 @@ type Notice = { kind: 'ok' | 'error'; text: string } | null
 
 export function Settings() {
   const { tasks, memos, meetings, brainstorms, lastBackupAt } = useStore()
+  useInitialMode('normal')
   const [notice, setNotice] = useState<Notice>(null)
   const [confirmClear, setConfirmClear] = useState(false)
   const [path, setPath] = useState('')
@@ -73,7 +75,7 @@ export function Settings() {
       <div>
         <h1 className="text-lg font-semibold text-neutral-900">設定</h1>
         <p className="mt-1 text-xs text-neutral-500">
-          上のバーをもう一度ダブルクリックすると、元の画面に戻ります。データはこのPCの中だけに保存され、外部には一切送信しません。
+          <kbd>,</kbd> か <kbd>Esc</kbd>(上のバーのダブルクリックでも)で元の画面に戻ります。データはこのPCの中だけに保存され、外部には一切送信しません。
         </p>
       </div>
 

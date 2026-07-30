@@ -28,12 +28,17 @@ npm run typecheck
 
 ```
 src/
-  types.ts        データモデル(Task / Memo / Meeting)
+  types.ts        データモデル(Task / Memo / Meeting / Brainstorm)
   storage.ts      Rustコマンド越しのファイル入出力
   store.ts        アプリ全体の状態。全ての変更はここを通す
-  lib/            日付・ID・バックアップ・ショートカット・一覧のvim移動
-  components/     Layout(枠) / Field(箱) / Badges / ShortcutHelp
-  pages/          タスク一覧・受信箱・詳細、メモ、議事録、設定
+  lib/
+    keys.ts       モードの判定(どの要素が「打つ場所」か)と j/k の列の定義
+    mode.tsx      移動 / 入力の2モード。Escの先取りもここ
+    useShortcuts  単キー・Ctrl+数字・Ctrl+Enter・破棄の確認
+    useSpotNav    j/k/gg/G/Enter/i。Layoutが全画面ぶん1つ持つ
+    その他        日付・ID・バックアップ・録音
+  components/     Layout(枠) / Field(箱) / TextBox(入力欄) / Badges / ShortcutHelp
+  pages/          タスク一覧・受信箱・詳細、メモ、議事録、ブレスト、設定
 src-tauri/
   src/lib.rs      ファイル入出力、トレイ常駐、グローバルショートカット
 ```
@@ -49,12 +54,31 @@ src-tauri/
 
 **キーボード**
 - **画面にボタンやタブを置かない。**操作は全てキーから。追加するときも UI ではなくキーを増やす
-- 入力欄にフォーカスがあるとき単キーは発火しない(`useShortcuts` が判定)
+- **vim と同じ2モード(`lib/mode.tsx`)。**移動 = 入力欄が readOnly で単キーが全部効く / 入力 = 欄に文字が入り単キーは死ぬ。単キーは移動モードでしか発火しない(`useShortcuts` がモードを見る)
+- **Esc は入力を抜けるだけ。画面を閉じてはいけない。**画面を出るのは移動モードの Esc。ModeProvider が capture で Esc を先取りして止めているので、入力中の Esc は画面側にも各欄の `onKeyDown` にも届かない。欄の中で「Escで書きかけを戻す」をやるなら `useOnExitInsert` を使う
+- `jk` も入力を抜ける(`handleEscapeChord`)。**`jj` にはできない。**開始と終了が同じ文字だと、本文として打った `j` が1打目の役を奪う(「xyzj」の後に `jj` すると本文の `j` が消える)。本文の `j` と脱出の `j` は観測できる情報が完全に同じなので、先読みにしても解けない(vim の `inoremap jj <Esc>` も同じ)。終了を `k` にすると保留中の `j` は常に最後のものに上書きされ、曖昧さが消える
+- その `jk` も、**`j` を先読みで待たせない。**待たせると `j` を打つたびに 300ms 遅れる。`k` が来た時点で `j` を `removeCharBefore` で取り消す。取り消せる input / textarea でだけ効かせる(選択肢の欄は `j` で値が動いて戻せない)。日本語入力中は `e.key` が `Process` になるので当たらない — そこは Esc の担当
+- **文字を打つ欄は `TextBox` / `TextArea` で書く。**素の `<input>`/`<textarea>` だとその欄だけ移動モードで文字が入ってしまう。readOnly にするのが要点で、`preventDefault` では日本語入力が止まらない(IMEはキーイベントの手前で食う)
+- 押せるものを増やしたら、`j`/`k` の列(`lib/keys.ts` の `SPOT_SELECTOR`)に入るか確かめる。入らないとそこへ辿り着けず、マウスに手が伸びる
+- **行数に比例する操作を足さない。**`j`/`k` は近づく動きなので件数ぶん遅くなる。速さを足すときは `f`(札) `/`(絞り込み) `Ctrl+数字` のような**件数に依らない**口を足す
+- 行の付属品(期限チップ・行ごとの削除・キー割り当て済みのボタン群)は `data-secondary` を付けて `j`/`k` の列から外す。Tab と 札(f) では届くので、行けなくなるものは作らない
+- **一時的な画面(札・絞り込み)は `useEscapeOwner` で Esc を取る。**取らないと ModeProvider の Esc と食い合う
+- **`navigate` を新しい経路で呼ぶときは `registerDraftGuard` を通す。**Layout の `go()` を使うこと。直に navigate すると新規作成の書きかけを黙って捨てる
+- リンク(`<Link>`)は React Router が自前で click を拾うので `go()` を通らない。Layout が capture で click を受けて止めている。**この choke point を外すと、録音中にリンクを踏んで録音が切れる**
 - **日本語入力の変換中のキーをショートカットにしない。**`isComposing` を必ず見る。ここを外すと変換確定のEnterで誤動作する
-- Layout のグローバルキーと画面ごとのキーは**両方のリスナーが発火する**。同じキーを二重に割り当てない
+- Layout のグローバルキーと画面ごとのキーは**両方のリスナーが発火する**。同じキーを二重に割り当てない。`j k g G Enter i` は Layout が全画面ぶん持っているので、画面側で使わない
+- 画面ごとに `useInitialMode()` を呼ぶ。開いた瞬間に打ちに来る画面(新規作成・議事録)だけ `'insert'`
+
+**開発ビルドと本番の見分け**
+
+2つ同時に常駐させるので、**必ず区別が付く状態を保つ**。取り違えて実データ側を触るのが一番まずい。
+
+- 名前は `src-tauri/src/lib.rs` の `APP_TITLE`(開発は「ツール (開発)」)。ウィンドウ名・トレイのツールチップ・トレイメニューの見出しがここから出る
+- **ウィンドウに枠が無いので、画面の中には題名が出ない。**そのため `Layout.tsx` の `IS_DEV` で、掴む取っ手を琥珀にし、左下に「開発」を出している。見た目を変えるときはこの2つを消さない
+- 設定画面のデータファイルのパスでも確かめられる(`data.dev.json` / `data.json`)
 
 **データ**
-- 開発ビルドは `data.dev.json`、本番は `data.json`(`src-tauri/src/lib.rs` の `data_path`)。作りかけの機能で実データを壊さないため
+- 開発ビルドは `data.dev.json`、本番は `data.json`(`src-tauri/src/lib.rs` の `data_path`)。作りかけの機能で実データを壊さないため。録音も `recordings.dev` / `recordings` で分かれている
 - 壊れたデータファイルは空として扱わず、エラーにして止める(次の保存で上書きしてしまうため)
 - バックアップJSONの読み込みは `parseBackup` で検証してから入れる。**フィールドを増やしたらここも直す**
 

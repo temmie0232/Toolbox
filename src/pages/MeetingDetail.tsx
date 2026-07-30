@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { InlineText } from '../components/InlineText'
+import { TextBox } from '../components/TextBox'
 import { formatDateTime } from '../lib/date'
+import { useInitialMode, useModeActions } from '../lib/mode'
 import { REWIND_SECONDS, formatOffset, useRecording } from '../lib/useRecording'
 import { useNumberShortcuts, useShortcuts } from '../lib/useShortcuts'
 import {
@@ -108,6 +110,7 @@ function RedoControl({
     return (
       <button
         type="button"
+        data-secondary
         onClick={onAsk}
         title="録音を消して、行に記録した時刻も外す"
         className="rounded-md px-2 py-1 text-xs text-neutral-400 hover:bg-red-50 hover:text-red-700"
@@ -117,7 +120,7 @@ function RedoControl({
     )
   }
   return (
-    <span className="flex flex-wrap items-center gap-2">
+    <span data-secondary className="flex flex-wrap items-center gap-2">
       <span className="text-xs text-neutral-600">{question}</span>
       <button
         type="button"
@@ -164,6 +167,9 @@ export function MeetingDetail() {
 
 function MeetingBody({ meeting }: { meeting: Meeting }) {
   const navigate = useNavigate()
+  const { enterInsert } = useModeActions()
+  // 会議中に開く画面。開いた瞬間から放り込めるようにする
+  useInitialMode('insert')
   const [kind, setKind] = useState<MinuteKind>('decision')
   const [text, setText] = useState('')
   const [error, setError] = useState('')
@@ -247,13 +253,21 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
     navigate('/meetings')
   }, [navigate])
 
+  // 打ちかけの行を Esc で消さずに抱えたまま画面を出ないようにする。
+  // 入力中の Esc は入力モードを抜けるだけなので、ここへ来るのは移動モードのEscだけ
+  const textRef = useRef('')
+  textRef.current = text
+
   const shortcuts = useMemo(
     () => ({
-      Escape: leave,
+      Escape: () => {
+        if (textRef.current) setText('')
+        else leave()
+      },
       h: leave,
-      a: () => captureRef.current?.focus(),
+      a: () => enterInsert(captureRef.current),
     }),
-    [leave],
+    [leave, enterInsert],
   )
   useShortcuts(shortcuts)
 
@@ -305,8 +319,8 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
       <div className="space-y-2 rounded-lg border border-neutral-200 px-3 py-2">
         {rec.status === 'recording' || rec.status === 'paused' ? (
           <>
-            {/* 上段は状態だけ。押せるのはマイクの入切のみ */}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            {/* 上段は状態だけ。押せるのはマイクの入切のみ(Ctrl+Shift+M) */}
+            <div data-secondary className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <span
                 className={`flex items-center gap-1.5 text-sm font-medium ${
                   rec.status === 'recording' ? 'text-red-600' : 'text-neutral-500'
@@ -330,8 +344,8 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
               />
             </div>
 
-            {/* 下段は操作。狭いときはここだけが折り返す */}
-            <div className="flex flex-wrap items-center gap-2">
+            {/* 下段は操作。Ctrl+E / Ctrl+Shift+E で足りるので j/k の列からは外す */}
+            <div data-secondary className="flex flex-wrap items-center gap-2">
               {rec.status === 'recording' ? (
                 <RecButton onClick={rec.pause} title="Ctrl+E">
                   一時停止
@@ -411,14 +425,15 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
 
       {/* 入力口はひとつ。種別を切り替えながら流し込む */}
       <div className="space-y-2 rounded-lg border border-neutral-200 p-3">
-        <div className="flex flex-wrap items-center gap-1">
+        {/* 種別は Ctrl+1〜3 で足りるので、j/k の列からは外す */}
+        <div data-secondary className="flex flex-wrap items-center gap-1">
           {MINUTE_KIND_ORDER.map((k, i) => (
             <button
               key={k}
               type="button"
               onClick={() => {
                 setKind(k)
-                captureRef.current?.focus()
+                enterInsert(captureRef.current)
               }}
               title={`${MINUTE_KIND_LABEL[k]}に切り替え(Ctrl+${i + 1})`}
               className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
@@ -433,7 +448,7 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
           ))}
           <span className="ml-1 text-xs text-neutral-400">{KIND_HINT[kind]}</span>
         </div>
-        <input
+        <TextBox
           ref={captureRef}
           className="box-input"
           value={text}
@@ -443,20 +458,8 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
             if (e.key === 'Enter' && !e.nativeEvent.isComposing && !e.ctrlKey && !e.metaKey) {
               e.preventDefault()
               void add()
-              return
             }
-            // 変換をEscで取り消しただけのときに、入力まで消さない
-            if (e.key === 'Escape' && e.nativeEvent.isComposing) {
-              e.stopPropagation()
-              return
-            }
-            // 打っている途中のEscで画面ごと抜けない。まず入力を消すだけにする
-            if (e.key === 'Escape' && text) {
-              e.stopPropagation()
-              setText('')
-              return
-            }
-            // 種別の切替(Ctrl+1〜3)は画面全体で拾っているので、ここでは何もしない
+            // Esc は入力モードを抜けるだけ(画面は動かない)。種別の切替は画面全体で拾う
           }}
           placeholder="ここに放り込む(Enterで確定)"
           aria-label="議事録に追加"
@@ -508,6 +511,7 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
                       {block.offsetMs !== undefined && meeting.recording && (
                         <button
                           type="button"
+                          data-secondary
                           onClick={() => void rec.seekTo(block.offsetMs!)}
                           className="mt-0.5 shrink-0 font-mono text-xs text-blue-600 hover:underline"
                           title={
@@ -521,8 +525,12 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
                       )}
                     </div>
 
+                    {/* 担当・期限・タスク化は行の付属品。札(f)から直接触る */}
                     {k === 'todo' && (
-                      <div className="mt-0.5 flex flex-wrap items-center gap-2 px-1 text-xs text-neutral-500">
+                      <div
+                        data-secondary
+                        className="mt-0.5 flex flex-wrap items-center gap-2 px-1 text-xs text-neutral-500"
+                      >
                         <span className="w-32">
                           <InlineText
                             value={block.assignee ?? ''}
@@ -538,7 +546,7 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
                             ariaLabel="担当"
                           />
                         </span>
-                        <input
+                        <TextBox
                           type="date"
                           value={block.due ?? ''}
                           onChange={(e) =>
@@ -576,6 +584,7 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
 
                   <button
                     type="button"
+                    data-secondary
                     onClick={() => void run(() => removeMinuteBlock(meeting.id, block.id))}
                     className="shrink-0 text-xs text-neutral-300 opacity-0 group-hover:opacity-100 hover:text-red-600 focus:opacity-100"
                     aria-label="削除"

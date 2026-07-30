@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { formatDateTime } from '../lib/date'
 import { memoSummary } from '../lib/memoSummary'
-import { useListNav } from '../lib/useListNav'
+import { useInitialMode } from '../lib/mode'
 import { useShortcuts } from '../lib/useShortcuts'
 import { useStore } from '../store'
 import { MEMO_TYPE_LABEL } from '../types'
@@ -10,7 +10,7 @@ import { MEMO_TYPE_LABEL } from '../types'
 export function MemoList() {
   const { status, memos, tasks } = useStore()
   const navigate = useNavigate()
-  const { setRow, nav } = useListNav()
+  useInitialMode('normal')
 
   const sorted = useMemo(
     () => [...memos].sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1)),
@@ -21,7 +21,7 @@ export function MemoList() {
     return (id?: string) => (id ? (map.get(id) ?? '') : '')
   }, [tasks])
 
-  const shortcuts = useMemo(() => ({ ...nav, o: () => navigate('/memos/new') }), [nav, navigate])
+  const shortcuts = useMemo(() => ({ o: () => navigate('/memos/new') }), [navigate])
   useShortcuts(shortcuts)
 
   return (
@@ -39,10 +39,9 @@ export function MemoList() {
 
       {sorted.length > 0 && (
         <ul className="divide-y divide-neutral-100 border-y border-neutral-100">
-          {sorted.map((memo, i) => (
+          {sorted.map((memo) => (
             <li key={memo.id}>
               <Link
-                ref={setRow(i)}
                 to={`/memos/${memo.id}`}
                 className="flex items-center gap-3 px-1 py-2.5 hover:bg-neutral-50"
               >

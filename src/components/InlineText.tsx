@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useModeActions, useOnExitInsert } from '../lib/mode'
 
 interface InlineTextProps {
   value: string
@@ -11,7 +12,7 @@ interface InlineTextProps {
 /**
  * 触ったときだけ入力欄になるテキスト。
  * 会議中の一覧はできるだけ素の文字に見せたいが、直したくなったらすぐ直せるようにする。
- * 確定は Enter か、他所をクリックしたとき。Esc で元に戻す。
+ * 確定は Enter か、他所へ移ったとき。Esc(入力モードを抜ける)で元に戻る。
  */
 export function InlineText({ value, onCommit, placeholder, className, ariaLabel }: InlineTextProps) {
   const [editing, setEditing] = useState(false)
@@ -19,19 +20,28 @@ export function InlineText({ value, onCommit, placeholder, className, ariaLabel 
   const inputRef = useRef<HTMLInputElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const wasEditing = useRef(false)
+  const { enterInsert } = useModeActions()
 
   useEffect(() => {
-    if (editing) inputRef.current?.focus()
+    // 編集に入ったら、そのまま打てる状態(入力モード)にする
+    if (editing) enterInsert(inputRef.current)
     // 編集を抜けたらフォーカスをここへ戻す。body に落ちると、
     // 次に打った1文字が画面切替のショートカットとして拾われてしまう
     else if (wasEditing.current) buttonRef.current?.focus()
     wasEditing.current = editing
-  }, [editing])
+  }, [editing, enterInsert])
 
   // 編集していない間は、外からの変更をそのまま映す
   useEffect(() => {
     if (!editing) setDraft(value)
   }, [value, editing])
+
+  // Esc で入力モードを抜けたら、書きかけを捨てて元の表示に戻す
+  useOnExitInsert(() => {
+    if (!editing) return
+    setDraft(value)
+    setEditing(false)
+  })
 
   const commit = () => {
     setEditing(false)
@@ -71,10 +81,6 @@ export function InlineText({ value, onCommit, placeholder, className, ariaLabel 
         if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
           e.preventDefault()
           commit()
-        } else if (e.key === 'Escape') {
-          e.stopPropagation()
-          setDraft(value)
-          setEditing(false)
         }
       }}
     />

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DeadlinePick } from '../components/DeadlinePick'
 import { Field } from '../components/Field'
+import { TextArea, TextBox } from '../components/TextBox'
+import { useInitialMode, useModeActions } from '../lib/mode'
 import { useDiscardGuard, useSaveShortcut, useShortcuts } from '../lib/useShortcuts'
 import { createTask, registerDraftGuard, registerFlush } from '../store'
 
@@ -11,6 +13,9 @@ import { createTask, registerDraftGuard, registerFlush } from '../store'
  */
 export function TaskNew() {
   const navigate = useNavigate()
+  const { enterInsert } = useModeActions()
+  // 開いた=打ちに来た画面。そのまま title に書ける状態から始める
+  useInitialMode('insert')
   const [title, setTitle] = useState('')
   const [purpose, setPurpose] = useState('')
   const [deliverable, setDeliverable] = useState('')
@@ -30,7 +35,8 @@ export function TaskNew() {
     if (saving) return
     if (!title.trim()) {
       setError('タイトルだけは入れてください(あとから直せます)')
-      titleRef.current?.focus()
+      // すぐ打ち始められるように、入力モードで返す
+      enterInsert(titleRef.current)
       return
     }
     setSaving(true)
@@ -50,7 +56,7 @@ export function TaskNew() {
     } finally {
       setSaving(false)
     }
-  }, [saving, title, purpose, deliverable, deadline, questions, navigate])
+  }, [saving, title, purpose, deliverable, deadline, questions, navigate, enterInsert])
 
   // 書きかけ中は画面切替キーで飛ばさない + ウィンドウを閉じるときは救済保存する
   const dirtyRef = useRef(false)
@@ -89,7 +95,7 @@ export function TaskNew() {
       }}
     >
       <Field label="タイトル" htmlFor="title">
-        <input
+        <TextBox
           id="title"
           ref={titleRef}
           className="box-input"
@@ -101,7 +107,7 @@ export function TaskNew() {
       </Field>
 
       <Field label="目的" hint="何のため / 誰が何に使う" htmlFor="purpose">
-        <textarea
+        <TextArea
           id="purpose"
           className="box-input"
           rows={2}
@@ -112,7 +118,7 @@ export function TaskNew() {
       </Field>
 
       <Field label="完成形" hint="どんな形で出す(枚数・形式・粒度)" htmlFor="deliverable">
-        <textarea
+        <TextArea
           id="deliverable"
           className="box-input"
           rows={2}
@@ -124,7 +130,7 @@ export function TaskNew() {
 
       <Field label="期限" hint="未定でも可" htmlFor="deadline">
         <div className="flex flex-wrap items-center gap-3">
-          <input
+          <TextBox
             id="deadline"
             type="date"
             className="box-input max-w-48"
@@ -136,7 +142,7 @@ export function TaskNew() {
       </Field>
 
       <Field label="疑問点" hint="1行に1件。あとで1件ずつ解決済みにできる" htmlFor="questions">
-        <textarea
+        <TextArea
           id="questions"
           className="box-input"
           rows={3}

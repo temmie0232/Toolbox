@@ -57,6 +57,32 @@
     @apply outline-2 outline-offset-2 outline-blue-600;
   }
 
+  /*
+    移動モードでは枠を黒くする。
+    青(=いま打てる)と同じ見た目だと、打ったのに入らない理由が分からなくなる
+  */
+  [data-mode='normal'] :focus-visible {
+    @apply outline-neutral-900;
+  }
+
+  /*
+    キーボードで移った先が画面の端に張り付かないようにする。
+    scrollIntoView は既定だと「はみ出さない最小限」しか動かさないので、
+    下端の行に移ると枠が画面の縁と重なって、前後が見えないまま止まる。
+    上は掴むバー(sticky)、下は左下のモード表示に隠れるので、その分だけ余白を確保する。
+    セレクタは lib/keys.ts の SPOT_SELECTOR と揃える
+  */
+  a[href],
+  button,
+  input,
+  textarea,
+  select,
+  summary,
+  audio[controls],
+  [tabindex] {
+    scroll-margin-block: 2.5rem;
+  }
+
   kbd {
     @apply rounded border border-neutral-300 bg-neutral-50 px-1.5 py-0.5 font-mono text-[11px] text-neutral-600;
   }
@@ -67,6 +93,11 @@
   .box-input {
     @apply w-full rounded-md border border-neutral-300 px-3 py-2 text-[15px] leading-relaxed
       placeholder:text-neutral-400 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600;
+  }
+
+  /* 移動モードで乗っているだけの箱。青(入力中)と区別する */
+  [data-mode='normal'] .box-input:focus {
+    @apply border-neutral-900 ring-neutral-900;
   }
 
   .btn-primary {

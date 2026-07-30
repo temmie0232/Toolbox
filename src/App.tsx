@@ -2,6 +2,7 @@ import { enable, isEnabled } from '@tauri-apps/plugin-autostart'
 import { useEffect } from 'react'
 import { Route, HashRouter as Router, Routes } from 'react-router-dom'
 import { Layout } from './components/Layout'
+import { ModeProvider } from './lib/mode'
 import { BrainstormDetail } from './pages/BrainstormDetail'
 import { BrainstormList } from './pages/BrainstormList'
 import { BrainstormNew } from './pages/BrainstormNew'
@@ -60,24 +61,27 @@ export function App() {
 
   return (
     <Router>
-      <Routes>
-        <Route element={<Layout />}>
-          <Route index element={<TaskList />} />
-          <Route path="tasks/new" element={<TaskNew />} />
-          <Route path="tasks/:id" element={<TaskDetail />} />
-          <Route path="memos" element={<MemoList />} />
-          <Route path="memos/new" element={<MemoNew />} />
-          <Route path="memos/:id" element={<MemoDetail />} />
-          <Route path="meetings" element={<MeetingList />} />
-          <Route path="meetings/new" element={<MeetingNew />} />
-          <Route path="meetings/:id" element={<MeetingDetail />} />
-          <Route path="brainstorms" element={<BrainstormList />} />
-          <Route path="brainstorms/new" element={<BrainstormNew />} />
-          <Route path="brainstorms/:id" element={<BrainstormDetail />} />
-          <Route path="settings" element={<Settings />} />
-          <Route path="*" element={<TaskList />} />
-        </Route>
-      </Routes>
+      {/* 移動 / 入力の2モード。全画面がこれを見て振る舞いを変える */}
+      <ModeProvider>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route index element={<TaskList />} />
+            <Route path="tasks/new" element={<TaskNew />} />
+            <Route path="tasks/:id" element={<TaskDetail />} />
+            <Route path="memos" element={<MemoList />} />
+            <Route path="memos/new" element={<MemoNew />} />
+            <Route path="memos/:id" element={<MemoDetail />} />
+            <Route path="meetings" element={<MeetingList />} />
+            <Route path="meetings/new" element={<MeetingNew />} />
+            <Route path="meetings/:id" element={<MeetingDetail />} />
+            <Route path="brainstorms" element={<BrainstormList />} />
+            <Route path="brainstorms/new" element={<BrainstormNew />} />
+            <Route path="brainstorms/:id" element={<BrainstormDetail />} />
+            <Route path="settings" element={<Settings />} />
+            <Route path="*" element={<TaskList />} />
+          </Route>
+        </Routes>
+      </ModeProvider>
     </Router>
   )
 }

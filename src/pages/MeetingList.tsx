@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { formatDateTime } from '../lib/date'
-import { useListNav } from '../lib/useListNav'
+import { useInitialMode } from '../lib/mode'
 import { useShortcuts } from '../lib/useShortcuts'
 import { useStore } from '../store'
 import { meetingSummary } from '../types'
@@ -9,14 +9,14 @@ import { meetingSummary } from '../types'
 export function MeetingList() {
   const { status, meetings } = useStore()
   const navigate = useNavigate()
-  const { setRow, nav } = useListNav()
+  useInitialMode('normal')
 
   const sorted = useMemo(
     () => [...meetings].sort((a, b) => (a.startedAt > b.startedAt ? -1 : 1)),
     [meetings],
   )
 
-  const shortcuts = useMemo(() => ({ ...nav, o: () => navigate('/meetings/new') }), [nav, navigate])
+  const shortcuts = useMemo(() => ({ o: () => navigate('/meetings/new') }), [navigate])
   useShortcuts(shortcuts)
 
   return (
@@ -34,12 +34,11 @@ export function MeetingList() {
 
       {sorted.length > 0 && (
         <ul className="divide-y divide-neutral-100 border-y border-neutral-100">
-          {sorted.map((meeting, i) => {
+          {sorted.map((meeting) => {
             const openTodos = meeting.blocks.filter((b) => b.kind === 'todo' && !b.done).length
             return (
               <li key={meeting.id}>
                 <Link
-                  ref={setRow(i)}
                   to={`/meetings/${meeting.id}`}
                   className="flex items-center gap-3 px-1 py-2.5 hover:bg-neutral-50"
                 >

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Field } from '../components/Field'
+import { TextArea, TextBox } from '../components/TextBox'
 import { formatDateTime } from '../lib/date'
+import { useInitialMode } from '../lib/mode'
 import {
   useDiscardGuard,
   useNumberShortcuts,
@@ -73,6 +75,8 @@ interface MemoFormProps {
 function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
   const navigate = useNavigate()
   const isEdit = Boolean(memo)
+  // 新規は打ちに来た画面。既存は読みに来ることもあるので移動から始める
+  useInitialMode(isEdit ? 'normal' : 'insert')
   const [type, setType] = useState<MemoType>(memo?.type ?? 'soraamekasa')
   const [taskId, setTaskId] = useState(memo?.taskId ?? initialTaskId)
   const [fact, setFact] = useState(memo?.fact ?? '')
@@ -239,7 +243,8 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
           {isEdit && (
             <span className="text-xs text-neutral-400">{dirty ? '保存中…' : '保存済み'}</span>
           )}
-          <div className="flex gap-1">
+          {/* テンプレは Ctrl+1〜3 で足りるので、j/k の列からは外す */}
+          <div data-secondary className="flex gap-1">
             {TYPE_KEYS.map(({ type: value, key }) => (
               <button
                 key={value}
@@ -263,7 +268,7 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
       {type === 'soraamekasa' && (
         <div className="space-y-5">
           <Field label="空(事実)" hint="見たまま・聞いたまま。解釈を混ぜない" htmlFor="fact">
-            <textarea
+            <TextArea
               id="fact"
               className="box-input"
               rows={3}
@@ -273,7 +278,7 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
             />
           </Field>
           <Field label="雨(解釈)" hint="その事実は何を意味する?" htmlFor="interpretation">
-            <textarea
+            <TextArea
               id="interpretation"
               className="box-input"
               rows={3}
@@ -282,7 +287,7 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
             />
           </Field>
           <Field label="傘(行動)" hint="だから何をする?" htmlFor="action">
-            <textarea
+            <TextArea
               id="action"
               className="box-input"
               rows={3}
@@ -296,7 +301,7 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
       {type === 'conclusion' && (
         <div className="space-y-5">
           <Field label="結論" hint="1行で。これだけ読めば伝わる形にする" htmlFor="conclusion">
-            <input
+            <TextBox
               id="conclusion"
               className="box-input"
               value={conclusion}
@@ -315,7 +320,7 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
             {reasons.map((reason, i) => (
               <div key={i} className="flex items-center gap-2">
                 <span className="w-4 shrink-0 text-xs text-neutral-400">{i + 1}</span>
-                <input
+                <TextBox
                   className="box-input"
                   value={reason}
                   onChange={(e) => setReason(i, e.target.value)}
@@ -325,7 +330,7 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
             ))}
           </div>
           <Field label="肉付け" hint="根拠を支える中身。後回しでよい" htmlFor="body">
-            <textarea
+            <TextArea
               id="body"
               className="box-input"
               rows={6}
@@ -338,7 +343,7 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
 
       {type === 'free' && (
         <Field label="メモ" htmlFor="body">
-          <textarea
+          <TextArea
             id="body"
             className="box-input"
             rows={10}

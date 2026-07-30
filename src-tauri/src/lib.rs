@@ -5,6 +5,15 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager};
 
+/// 開発ビルドと本番を並べて常駐させるので、名前で見分けが付くようにする。
+/// Alt+Tab・タスクバー・トレイのツールチップに出るのはここ。
+/// ウィンドウに枠が無く画面の中には題名が出ないため、フロント側にも印を出している
+/// (`Layout.tsx` の「開発」表示と、掴む取っ手の色)。
+#[cfg(debug_assertions)]
+const APP_TITLE: &str = "ツール (開発)";
+#[cfg(not(debug_assertions))]
+const APP_TITLE: &str = "ツール";
+
 /// 常駐アプリなので、ウィンドウは「閉じる」ではなく「隠す」。ここが唯一の復帰口。
 fn show_main(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
@@ -260,14 +269,27 @@ pub fn run() {
                 )?;
             }
 
+            // 同時に常駐していても Alt+Tab とタスクバーで見分けられるようにする
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_title(APP_TITLE);
+            }
+
             // ---- トレイ常駐 ----
             // ウィンドウを隠してもここから戻れる。閉じるボタンを廃止したので必須
             let show = MenuItem::with_id(app, "show", "表示 (Ctrl+Alt+T)", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "終了", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show, &quit])?;
+            // 開発版が常駐していると同じ絵柄のアイコンが2つ並ぶ。
+            // どちらを右クリックしたのかメニュー自体で分かるように、名前を頭に出す
+            let header = MenuItem::with_id(app, "header", APP_TITLE, false, None::<&str>)?;
+            let menu = if cfg!(debug_assertions) {
+                Menu::with_items(app, &[&header, &show, &quit])?
+            } else {
+                Menu::with_items(app, &[&show, &quit])?
+            };
             TrayIconBuilder::with_id("main-tray")
                 .icon(app.default_window_icon().unwrap().clone())
-                .tooltip("ツール")
+                // トレイのアイコンは同じ絵柄なので、どちらかは名前で確かめる
+                .tooltip(APP_TITLE)
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {

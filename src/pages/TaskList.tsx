@@ -1,11 +1,11 @@
-import { useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ConfirmBadge, StatusBadge } from '../components/Badges'
 import { daysUntil, deadlineLabel } from '../lib/date'
-import { useListNav } from '../lib/useListNav'
-import { useShortcuts } from '../lib/useShortcuts'
-import { useStore } from '../store'
-import { needsConfirmation, type Task } from '../types'
+import { useInitialMode } from '../lib/mode'
+import { useNumberShortcuts, useShortcuts } from '../lib/useShortcuts'
+import { updateTaskWith, useStore } from '../store'
+import { TASK_STATUS_ORDER, needsConfirmation, type Task, type TaskStatus } from '../types'
 
 /** 期限順(未定は末尾)。同じ期限なら作成が古い方を上に */
 function byDeadline(a: Task, b: Task): number {
@@ -22,7 +22,7 @@ function byDeadline(a: Task, b: Task): number {
 export function TaskList() {
   const { status, tasks } = useStore()
   const navigate = useNavigate()
-  const { setRow, nav } = useListNav()
+  useInitialMode('normal')
 
   const { open, done } = useMemo(() => {
     const open = tasks.filter((t) => t.status !== 'done').sort(byDeadline)
@@ -32,8 +32,48 @@ export function TaskList() {
     return { open, done }
   }, [tasks])
 
-  const shortcuts = useMemo(() => ({ ...nav, o: () => navigate('/tasks/new') }), [nav, navigate])
+  /**
+   * いま乗っている行のタスクID。
+   * 詳細を開いてステータスを変えて戻る往復が一番の無駄なので、一覧から直に触れるようにする。
+   */
+  const focusedTaskId = useCallback((): string | undefined => {
+    const el = document.activeElement
+    if (!(el instanceof HTMLElement)) return undefined
+    return el.closest('[data-task-id]')?.getAttribute('data-task-id') ?? undefined
+  }, [])
+
+  // 書き込みの失敗は store が拾って上部のバナーに出す。ここで握り潰しても黙りはしない
+  const write = (work: Promise<void>) => void work.catch(() => undefined)
+
+  const setStatus = useCallback(
+    (next: TaskStatus) => {
+      const id = focusedTaskId()
+      if (!id) return
+      write(updateTaskWith(id, () => ({ status: next })))
+    },
+    [focusedTaskId],
+  )
+
+  const shortcuts = useMemo(
+    () => ({
+      o: () => navigate('/tasks/new'),
+      // x: 完了 ⇄ 作業中 の行き来。一覧で片付ける動作は連打になるので1キーにする
+      x: () => {
+        const id = focusedTaskId()
+        if (!id) return
+        write(updateTaskWith(id, (t) => ({ status: t.status === 'done' ? 'in_progress' : 'done' })))
+      },
+    }),
+    [navigate, focusedTaskId],
+  )
   useShortcuts(shortcuts)
+
+  // Ctrl+1〜4 で、乗っている行のステータスを直接変える(詳細画面と同じ並び)
+  const statusHandlers = useMemo(
+    () => TASK_STATUS_ORDER.map((s) => () => setStatus(s)),
+    [setStatus],
+  )
+  useNumberShortcuts(statusHandlers)
 
   // 詳細から戻ってきたら、さっき見ていた行にフォーカスを戻す(j/kで続きから動ける)
   useEffect(() => {
@@ -66,8 +106,8 @@ export function TaskList() {
 
       {open.length > 0 && (
         <ul className="divide-y divide-neutral-100 border-y border-neutral-100">
-          {open.map((task, i) => (
-            <TaskRow key={task.id} task={task} ref={setRow(i)} />
+          {open.map((task) => (
+            <TaskRow key={task.id} task={task} />
           ))}
         </ul>
       )}
@@ -78,8 +118,8 @@ export function TaskList() {
             完了 {done.length}件
           </summary>
           <ul className="mt-2 divide-y divide-neutral-100 border-y border-neutral-100">
-            {done.map((task, i) => (
-              <TaskRow key={task.id} task={task} ref={setRow(open.length + i)} />
+            {done.map((task) => (
+              <TaskRow key={task.id} task={task} />
             ))}
           </ul>
         </details>
@@ -88,12 +128,7 @@ export function TaskList() {
   )
 }
 
-interface TaskRowProps {
-  task: Task
-  ref: (el: HTMLAnchorElement | null) => void
-}
-
-function TaskRow({ task, ref }: TaskRowProps) {
+function TaskRow({ task }: { task: Task }) {
   const unresolved = task.questions.filter((q) => !q.resolved).length
   const diff = task.deadline !== undefined ? daysUntil(task.deadline) : null
 
@@ -110,7 +145,6 @@ function TaskRow({ task, ref }: TaskRowProps) {
   return (
     <li>
       <Link
-        ref={ref}
         to={`/tasks/${task.id}`}
         data-task-id={task.id}
         onClick={() => sessionStorage.setItem('tool:lastTaskId', task.id)}

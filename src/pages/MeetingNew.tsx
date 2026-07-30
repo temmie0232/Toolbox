@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Field } from '../components/Field'
+import { TextBox } from '../components/TextBox'
+import { useInitialMode } from '../lib/mode'
 import { useDiscardGuard, useSaveShortcut, useShortcuts } from '../lib/useShortcuts'
 import { createMeeting, registerDraftGuard } from '../store'
 
@@ -10,6 +12,7 @@ import { createMeeting, registerDraftGuard } from '../store'
  */
 export function MeetingNew() {
   const navigate = useNavigate()
+  useInitialMode('insert')
   const [title, setTitle] = useState('')
   const [participants, setParticipants] = useState('')
   const [error, setError] = useState('')
@@ -49,7 +52,7 @@ export function MeetingNew() {
       }}
     >
       <Field label="会議名" htmlFor="title">
-        <input
+        <TextBox
           id="title"
           className="box-input"
           value={title}
@@ -60,7 +63,7 @@ export function MeetingNew() {
       </Field>
 
       <Field label="参加者" hint="あとで足せる。空でもよい" htmlFor="participants">
-        <input
+        <TextBox
           id="participants"
           className="box-input"
           value={participants}

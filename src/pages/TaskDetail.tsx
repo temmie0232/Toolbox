@@ -3,9 +3,11 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ConfirmBadge } from '../components/Badges'
 import { DeadlinePick } from '../components/DeadlinePick'
 import { Field } from '../components/Field'
+import { TextArea, TextBox } from '../components/TextBox'
 import { formatDateTime } from '../lib/date'
 import { newId } from '../lib/id'
 import { memoSummary } from '../lib/memoSummary'
+import { useInitialMode, useModeActions } from '../lib/mode'
 import { useNumberShortcuts, useSaveShortcut, useShortcuts } from '../lib/useShortcuts'
 import { registerFlush, removeTask, updateTaskWith, useStore } from '../store'
 import {
@@ -62,6 +64,9 @@ interface BodyProps {
 
 function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
   const navigate = useNavigate()
+  const { enterInsert } = useModeActions()
+  // 見に来る画面。書きたくなったら i か Enter で欄に入る
+  useInitialMode('normal')
   const [title, setTitle] = useState(task.title)
   const [purpose, setPurpose] = useState(task.purpose)
   const [deliverable, setDeliverable] = useState(task.deliverable)
@@ -155,10 +160,10 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
       Escape: leave,
       h: leave,
       // vim風: a(append)で疑問点の追加欄へ、cで確認文コピー
-      a: () => questionInputRef.current?.focus(),
+      a: () => enterInsert(questionInputRef.current),
       c: () => void copyRef.current?.(),
     }),
-    [leave],
+    [leave, enterInsert],
   )
   useShortcuts(shortcuts)
 
@@ -227,7 +232,7 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
     <div className="space-y-8">
       <div className="space-y-3">
         <div className="flex items-start gap-3">
-          <input
+          <TextBox
             className="box-input flex-1 text-base font-medium"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -236,7 +241,8 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
           {needsConfirmation(task) && <ConfirmBadge count={unresolvedQuestions.length} />}
         </div>
 
-        <div className="flex flex-wrap items-center gap-1">
+        {/* ステータスは Ctrl+1〜4 で足りるので、j/k の列からは外す */}
+        <div data-secondary className="flex flex-wrap items-center gap-1">
           {TASK_STATUS_ORDER.map((s, i) => (
             <button
               key={s}
@@ -259,7 +265,7 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
 
       <div className="space-y-5">
         <Field label="目的" hint="何のため / 誰が何に使う" htmlFor="purpose">
-          <textarea
+          <TextArea
             id="purpose"
             className="box-input"
             rows={2}
@@ -269,7 +275,7 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
         </Field>
 
         <Field label="完成形" hint="どんな形で出す" htmlFor="deliverable">
-          <textarea
+          <TextArea
             id="deliverable"
             className="box-input"
             rows={2}
@@ -280,7 +286,7 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
 
         <Field label="期限" htmlFor="deadline">
           <div className="flex flex-wrap items-center gap-3">
-            <input
+            <TextBox
               id="deadline"
               type="date"
               className="box-input max-w-48"
@@ -303,9 +309,10 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
           {unresolvedQuestions.length > 0 && (
             <button
               type="button"
+              data-secondary
               onClick={() => void copyQuestions()}
               className="shrink-0 text-xs text-blue-600 hover:underline"
-              title="未解決の疑問点を、そのまま送れる文面でコピーする"
+              title="未解決の疑問点を、そのまま送れる文面でコピーする(c)"
             >
               {copied ? 'コピーしました ✓' : '確認用にコピー'}
             </button>
@@ -329,6 +336,7 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
               </label>
               <button
                 type="button"
+                data-secondary
                 onClick={() => deleteQuestion(q.id)}
                 className="text-xs text-neutral-300 opacity-0 group-hover:opacity-100 hover:text-red-600 focus:opacity-100"
                 aria-label="この疑問点を削除"
@@ -342,7 +350,7 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
           )}
         </ul>
         <div className="flex gap-2">
-          <input
+          <TextBox
             ref={questionInputRef}
             className="box-input"
             value={newQuestion}

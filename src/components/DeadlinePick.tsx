@@ -14,8 +14,9 @@ export function DeadlinePick({ value, onChange }: DeadlinePickProps) {
     { label: '来週', date: fromToday(7) },
   ]
 
+  // 5個をj/kで1つずつ辿らせると期限を入れるだけで手数を食う。札(f)から直接押す
   return (
-    <div className="flex items-center gap-1">
+    <div data-secondary className="flex items-center gap-1">
       {chips.map((chip) => (
         <button
           key={chip.label}

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Field } from '../components/Field'
+import { TextBox } from '../components/TextBox'
+import { useInitialMode } from '../lib/mode'
 import { useDiscardGuard, useSaveShortcut, useShortcuts } from '../lib/useShortcuts'
 import { createBrainstorm, registerDraftGuard } from '../store'
 
@@ -8,6 +10,7 @@ const PRESETS = [3, 5, 10, 15]
 
 export function BrainstormNew() {
   const navigate = useNavigate()
+  useInitialMode('insert')
   const [theme, setTheme] = useState('')
   const [limitMinutes, setLimitMinutes] = useState(5)
   const [error, setError] = useState('')
@@ -46,7 +49,7 @@ export function BrainstormNew() {
       }}
     >
       <Field label="テーマ" hint="何について出すのか。1行で" htmlFor="theme">
-        <input
+        <TextBox
           id="theme"
           className="box-input"
           value={theme}
