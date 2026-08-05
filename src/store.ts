@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { newId, now } from './lib/id'
+import { deleteImages, memoImageFiles } from './lib/memoImages'
 import { deleteRecording, loadData, saveData } from './storage'
 import {
   EMPTY_SUBMIT_CHECK,
@@ -237,8 +238,12 @@ export function updateMemo(
   })
 }
 
-export function removeMemo(id: string): Promise<void> {
-  return commit(({ memos }) => ({ memos: memos.filter((m) => m.id !== id) }))
+export async function removeMemo(id: string): Promise<void> {
+  // 貼ってあった画像も一緒に消す(議事録と録音の関係と同じ。残すと容量だけ食う)。
+  // 消す前に拾っておく。後からだとメモが無くなっていて辿れない
+  const images = state.memos.filter((m) => m.id === id).flatMap(memoImageFiles)
+  await commit(({ memos }) => ({ memos: memos.filter((m) => m.id !== id) }))
+  if (images.length > 0) await deleteImages(images)
 }
 
 // ---- 議事録 ----

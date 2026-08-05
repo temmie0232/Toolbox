@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Field } from '../components/Field'
+import { ImageStrip, ImageViewer } from '../components/MemoImages'
 import { TextArea, TextBox } from '../components/TextBox'
 import { formatDateTime } from '../lib/date'
+import { deleteImages, usePasteImage } from '../lib/memoImages'
 import { useInitialMode } from '../lib/mode'
 import {
   useDiscardGuard,
@@ -88,6 +90,14 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
+  // 拡大表示している画像。開いている間はこの画面のキーを止める(Escは拡大側が取る)
+  const [viewing, setViewing] = useState<string | null>(null)
+  // この画面で貼った画像。新規を保存せずに取り消したら、誰も参照しないので消す
+  const pastedRef = useRef<string[]>([])
+  const notePasted = useCallback((fileName: string) => {
+    pastedRef.current = [...pastedRef.current, fileName]
+  }, [])
+  const onPasteImage = usePasteImage(setError, notePasted)
 
   const savedReasons = useMemo(() => toReasons(memo?.reasons), [memo?.reasons])
   const dirty =
@@ -216,7 +226,15 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
     back()
   }, [flush, back])
 
-  const { armed, onEscape, disarm } = useDiscardGuard(dirty, back)
+  /** 新規を取り消したときの後片付け。貼った画像はどのメモからも参照されないまま残る */
+  const discardNew = useCallback(() => {
+    const pasted = pastedRef.current
+    pastedRef.current = []
+    if (pasted.length > 0) void deleteImages(pasted)
+    back()
+  }, [back])
+
+  const { armed, onEscape, disarm } = useDiscardGuard(dirty, discardNew)
 
   const shortcuts = useMemo<ShortcutMap>(() => {
     const map: ShortcutMap = { Escape: isEdit ? leaveEdit : onEscape }
@@ -224,7 +242,7 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
     if (isEdit) map.h = leaveEdit
     return map
   }, [isEdit, leaveEdit, onEscape])
-  useShortcuts(shortcuts)
+  useShortcuts(shortcuts, viewing === null)
 
   // Ctrl+1〜3 でテンプレ切替。本文を書いている最中でも切り替えられる
   const typeHandlers = useMemo(
@@ -274,8 +292,10 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
               rows={3}
               value={fact}
               onChange={(e) => setFact(e.target.value)}
+              onPaste={(e) => onPasteImage(e, setFact)}
               autoFocus={!isEdit}
             />
+            <ImageStrip text={fact} onOpen={setViewing} />
           </Field>
           <Field label="雨(解釈)" hint="その事実は何を意味する?" htmlFor="interpretation">
             <TextArea
@@ -284,7 +304,9 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
               rows={3}
               value={interpretation}
               onChange={(e) => setInterpretation(e.target.value)}
+              onPaste={(e) => onPasteImage(e, setInterpretation)}
             />
+            <ImageStrip text={interpretation} onOpen={setViewing} />
           </Field>
           <Field label="傘(行動)" hint="だから何をする?" htmlFor="action">
             <TextArea
@@ -293,7 +315,9 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
               rows={3}
               value={action}
               onChange={(e) => setAction(e.target.value)}
+              onPaste={(e) => onPasteImage(e, setAction)}
             />
+            <ImageStrip text={action} onOpen={setViewing} />
           </Field>
         </div>
       )}
@@ -336,7 +360,9 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
               rows={6}
               value={body}
               onChange={(e) => setBody(e.target.value)}
+              onPaste={(e) => onPasteImage(e, setBody)}
             />
+            <ImageStrip text={body} onOpen={setViewing} />
           </Field>
         </div>
       )}
@@ -349,8 +375,10 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
             rows={10}
             value={body}
             onChange={(e) => setBody(e.target.value)}
+            onPaste={(e) => onPasteImage(e, setBody)}
             autoFocus={!isEdit}
           />
+          <ImageStrip text={body} onOpen={setViewing} />
         </Field>
       )}
 
@@ -437,6 +465,8 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
           )}
         </div>
       )}
+
+      {viewing && <ImageViewer fileName={viewing} onClose={() => setViewing(null)} />}
     </div>
   )
 }

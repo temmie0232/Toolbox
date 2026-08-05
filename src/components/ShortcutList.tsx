@@ -58,6 +58,7 @@ export const SHORTCUT_GROUPS: Group[] = [
       { keys: ['Ctrl', 'Enter'], label: '即保存(編集画面は自動保存)' },
       { keys: ['Ctrl', '1〜4'], label: 'ステータス(タスク詳細)' },
       { keys: ['Ctrl', '1〜3'], label: 'テンプレ(メモ) / 種別(議事録)' },
+      { keys: ['Ctrl', 'V'], label: 'スクリーンショットをその行に貼る(メモ)' },
       { keys: ['Tab'], label: '次の箱へ移動' },
     ],
   },

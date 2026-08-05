@@ -36,8 +36,9 @@ src/
     mode.tsx      移動 / 入力の2モード。Escの先取りもここ
     useShortcuts  単キー・Ctrl+数字・Ctrl+Enter・破棄の確認
     useSpotNav    j/k/gg/G/Enter/i。Layoutが全画面ぶん1つ持つ
+    memoImages    メモに貼った画像。本文の印とファイルの出し入れ
     その他        日付・ID・バックアップ・録音
-  components/     Layout(枠) / Field(箱) / TextBox(入力欄) / Badges / ShortcutHelp
+  components/     Layout(枠) / Field(箱) / TextBox(入力欄) / Badges / ShortcutHelp / MemoImages(貼った画像の帯と拡大)
   pages/          タスク一覧・受信箱・詳細、メモ、議事録、ブレスト、設定
 src-tauri/
   src/lib.rs        ファイル入出力、トレイ常駐、グローバルショートカット(Ctrl+Alt+T)
@@ -79,8 +80,19 @@ src-tauri/
 - **ウィンドウに枠が無いので、画面の中には題名が出ない。**そのため `Layout.tsx` の `IS_DEV` で、掴む取っ手を琥珀にし、左下に「開発」を出している。見た目を変えるときはこの2つを消さない
 - 設定画面のデータファイルのパスでも確かめられる(`data.dev.json` / `data.json`)
 
+**メモに貼る画像(スクリーンショット)**
+- **絵は `data.json` に入れない。**編集画面は打つたびに自動保存するので、base64で本文に混ぜると1文字打つたびに数MBのJSONを書き直すことになる。ファイルは録音と同じく別フォルダ(`images` / `images.dev`)
+- **本文が持つのは印(`[画像:ファイル名]`)だけで、それが唯一の正。**textarea の中に絵は置けないので、「どの行に貼ったか」は印で表し、絵は欄の下の帯(`ImageStrip`)に出す。帯は本文の印を読んで並べているだけなので、印を消せば帯からも消える。**メモ側に画像の一覧を持たせない**(本文と二重管理になり、必ずずれる)
+- 印を本文の**行として**差し込む(`insertTokenLine`)。行の途中に埋めると本文と混ざって、印だけを消したり動かしたりできなくなる
+- 貼るのは打っている欄、つまり入力モード(`i` で入ってから Ctrl+V)。移動モードの欄は readOnly で、貼り付けが届くかはブラウザ任せ。届いても本文は state 経由で変わるだけなので、どちらでも壊れない
+- 帯のサムネイルは `data-secondary` を付けて `j`/`k` の列から外す(1枚ごとに `j` を押させると行数に比例する操作になる)。Tab と 札(`f`)では届く
+- 拡大表示(`ImageViewer`)は `useEscapeOwner` で Esc を取る。取らないと「入力を抜ける」「画面を出る」と食い合う。開いている間は `useShortcuts` の第2引数で画面側のキーも止める
+- ファイル名は Rust 側(`image_path`)でも絞る。名前は本文の印から来るので、手で書き換えられた値も届きうる
+- 消すのは**メモごと消したとき**(`removeMemo`)と**新規作成を取り消したとき**(`MemoEdit` の `discardNew`)。既存メモから印だけ消した場合はファイルを残す(打ち直せば戻せるようにするため)
+- **画像もJSONバックアップには含まれない**(録音と同じ)。設定画面の説明もそう書いてある
+
 **データ**
-- 開発ビルドは `data.dev.json`、本番は `data.json`(`src-tauri/src/lib.rs` の `data_path`)。作りかけの機能で実データを壊さないため。録音も `recordings.dev` / `recordings` で分かれている
+- 開発ビルドは `data.dev.json`、本番は `data.json`(`src-tauri/src/lib.rs` の `data_path`)。作りかけの機能で実データを壊さないため。録音も `recordings.dev` / `recordings`、画像も `images.dev` / `images` で分かれている
 - 壊れたデータファイルは空として扱わず、エラーにして止める(次の保存で上書きしてしまうため)
 - バックアップJSONの読み込みは `parseBackup` で検証してから入れる。**フィールドを増やしたらここも直す**
 

@@ -225,6 +225,74 @@ fn delete_recording(app: tauri::AppHandle, file_name: String) -> Result<(), Stri
     Ok(())
 }
 
+// ---- メモに貼った画像 ----
+
+/// 画像の置き場。data.json と同じフォルダの下に置く。
+/// 録音と同じく、開発ビルドは別フォルダを使う
+fn images_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("保存先フォルダを取得できませんでした: {e}"))?
+        .join(if cfg!(debug_assertions) {
+            "images.dev"
+        } else {
+            "images"
+        });
+    fs::create_dir_all(&dir).map_err(|e| format!("画像フォルダを作成できませんでした: {e}"))?;
+    Ok(dir)
+}
+
+/// 録音と同じく、画面から渡された名前をそのままパスに使わない。
+/// 名前は本文の印(`[画像:…]`)から来るので、手で編集された値も届きうる。
+fn image_path(app: &tauri::AppHandle, file_name: &str) -> Result<PathBuf, String> {
+    let safe: String = file_name
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_' || *c == '.')
+        .collect();
+    if safe.is_empty() || safe.contains("..") {
+        return Err("画像ファイル名が不正です".into());
+    }
+    Ok(images_dir(app)?.join(safe))
+}
+
+/// 貼り付けられた画像を保存する。
+/// 実際に使われた名前を返す(上の絞り込みで変わった場合、本文の印はこちらに合わせる)。
+#[tauri::command]
+fn save_image(
+    app: tauri::AppHandle,
+    file_name: String,
+    data_base64: String,
+) -> Result<String, String> {
+    use base64::Engine as _;
+
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data_base64.as_bytes())
+        .map_err(|e| format!("画像を読み取れませんでした: {e}"))?;
+    let path = image_path(&app, &file_name)?;
+    fs::write(&path, &bytes).map_err(|e| format!("画像を保存できませんでした: {e}"))?;
+    path.file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .ok_or_else(|| "画像ファイル名が不正です".to_string())
+}
+
+/// 表示用に画像を読む。録音と同じくバイナリのまま返す
+#[tauri::command]
+fn read_image(app: tauri::AppHandle, file_name: String) -> Result<tauri::ipc::Response, String> {
+    let path = image_path(&app, &file_name)?;
+    let bytes = fs::read(&path).map_err(|e| format!("画像を読み込めませんでした: {e}"))?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+#[tauri::command]
+fn delete_image(app: tauri::AppHandle, file_name: String) -> Result<(), String> {
+    let path = image_path(&app, &file_name)?;
+    if path.exists() {
+        fs::remove_file(&path).map_err(|e| format!("画像を削除できませんでした: {e}"))?;
+    }
+    Ok(())
+}
+
 /// データフォルダをエクスプローラーで開く
 #[tauri::command]
 fn open_data_dir(app: tauri::AppHandle) -> Result<(), String> {
@@ -377,7 +445,10 @@ pub fn run() {
             set_always_on_top,
             append_recording,
             read_recording,
-            delete_recording
+            delete_recording,
+            save_image,
+            read_image,
+            delete_image
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
