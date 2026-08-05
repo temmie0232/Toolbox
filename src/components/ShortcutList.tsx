@@ -56,6 +56,8 @@ export const SHORTCUT_GROUPS: Group[] = [
     title: '入力中(-- 入力 --)でも効くもの',
     items: [
       { keys: ['Ctrl', 'Enter'], label: '即保存(編集画面は自動保存)' },
+      { keys: ['Enter'], label: '次の箱へ(メモ・タスク。議事録は行の確定)' },
+      { keys: ['Shift', 'Enter'], label: '改行' },
       { keys: ['Ctrl', '1〜4'], label: 'ステータス(タスク詳細)' },
       { keys: ['Ctrl', '1〜3'], label: 'テンプレ(メモ) / 種別(議事録)' },
       { keys: ['Ctrl', 'V'], label: 'スクリーンショットをその行に貼る(メモ)' },

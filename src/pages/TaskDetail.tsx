@@ -9,6 +9,7 @@ import { formatDateTime } from '../lib/date'
 import { newId } from '../lib/id'
 import { memoSummary } from '../lib/memoSummary'
 import { useInitialMode, useModeActions } from '../lib/mode'
+import { useFieldChain } from '../lib/useFieldChain'
 import { useNumberShortcuts, useSaveShortcut, useShortcuts } from '../lib/useShortcuts'
 import { registerFlush, removeTask, updateTaskWith, useStore } from '../store'
 import {
@@ -229,8 +230,12 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
   }
   copyRef.current = copyQuestions
 
+  // Enter=次の箱 / Shift+Enter=改行 / Ctrl+Enter=保存。
+  // 疑問点の追加欄だけは欄側がEnterを持っている(そちらが優先される)
+  const onFieldEnter = useFieldChain()
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-8" onKeyDown={onFieldEnter}>
       <div className="space-y-3">
         <GuiButton label="← 一覧" hint="h" onClick={leave} />
         <div className="flex items-start gap-3">

@@ -4,6 +4,7 @@ import { DeadlinePick } from '../components/DeadlinePick'
 import { Field } from '../components/Field'
 import { TextArea, TextBox } from '../components/TextBox'
 import { useInitialMode, useModeActions } from '../lib/mode'
+import { useFieldChain } from '../lib/useFieldChain'
 import { useDiscardGuard, useSaveShortcut, useShortcuts } from '../lib/useShortcuts'
 import { createTask, registerDraftGuard, registerFlush } from '../store'
 
@@ -86,9 +87,13 @@ export function TaskNew() {
   const shortcuts = useMemo(() => ({ Escape: onEscape }), [onEscape])
   useShortcuts(shortcuts)
 
+  // Enter=次の箱 / Shift+Enter=改行 / Ctrl+Enter=保存
+  const onFieldEnter = useFieldChain()
+
   return (
     <form
       className="space-y-5"
+      onKeyDown={onFieldEnter}
       onSubmit={(e) => {
         e.preventDefault()
         void save()
@@ -141,7 +146,11 @@ export function TaskNew() {
         </div>
       </Field>
 
-      <Field label="疑問点" hint="1行に1件。あとで1件ずつ解決済みにできる" htmlFor="questions">
+      <Field
+        label="疑問点"
+        hint="1行に1件(改行は Shift+Enter)。あとで1件ずつ解決済みにできる"
+        htmlFor="questions"
+      >
         <TextArea
           id="questions"
           className="box-input"

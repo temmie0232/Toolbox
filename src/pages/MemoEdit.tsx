@@ -6,6 +6,7 @@ import { TextArea, TextBox } from '../components/TextBox'
 import { formatDateTime } from '../lib/date'
 import { deleteImages, usePasteImage } from '../lib/memoImages'
 import { useInitialMode } from '../lib/mode'
+import { useFieldChain } from '../lib/useFieldChain'
 import {
   useDiscardGuard,
   useNumberShortcuts,
@@ -98,6 +99,8 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
     pastedRef.current = [...pastedRef.current, fileName]
   }, [])
   const onPasteImage = usePasteImage(setError, notePasted)
+  // Enter=次の箱 / Shift+Enter=改行 / Ctrl+Enter=保存
+  const onFieldEnter = useFieldChain()
 
   const savedReasons = useMemo(() => toReasons(memo?.reasons), [memo?.reasons])
   const dirty =
@@ -255,7 +258,7 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
     setReasons((prev) => prev.map((r, i) => (i === index ? value : r)))
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" onKeyDown={onFieldEnter}>
       <div className="flex items-center justify-end">
         <div className="flex items-center gap-2">
           {isEdit && (
@@ -368,7 +371,7 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
       )}
 
       {type === 'free' && (
-        <Field label="メモ" htmlFor="body">
+        <Field label="メモ" hint="改行は Shift+Enter(Enterは次の箱へ)" htmlFor="body">
           <TextArea
             id="body"
             className="box-input"
