@@ -1,6 +1,9 @@
 use std::fs;
 use std::path::PathBuf;
 
+#[cfg(windows)]
+mod mouse_hook;
+
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager};
@@ -23,8 +26,8 @@ fn show_main(app: &tauri::AppHandle) {
     }
 }
 
-/// 表示中なら隠す、隠れていれば出す(トレイクリックと呼び出しキー共通)
-fn toggle_main(app: &tauri::AppHandle) {
+/// 表示中なら隠す、隠れていれば出す(トレイクリックと呼び出しキー・マウスのサイドボタン共通)
+pub(crate) fn toggle_main(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let visible = window.is_visible().unwrap_or(false);
         let focused = window.is_focused().unwrap_or(false);
@@ -346,6 +349,12 @@ pub fn run() {
                 let _ = app.global_shortcut().register(summon);
                 let _ = app.global_shortcut().register(pin);
             }
+
+            // ---- マウスのサイドボタン(手前側/戻る)でも呼び出せるようにする ----
+            // Logicool純正アプリを入れられない環境向け。ドライバ無しでもOSが
+            // XBUTTON1として送ってくるので、低レベルフックで直接拾う。
+            #[cfg(windows)]
+            mouse_hook::install(app.handle().clone());
 
             // 自動起動で立ち上がったときは、画面に出さずトレイに常駐するだけにする
             if std::env::args().any(|arg| arg == "--minimized") {

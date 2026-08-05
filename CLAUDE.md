@@ -40,7 +40,8 @@ src/
   components/     Layout(枠) / Field(箱) / TextBox(入力欄) / Badges / ShortcutHelp
   pages/          タスク一覧・受信箱・詳細、メモ、議事録、ブレスト、設定
 src-tauri/
-  src/lib.rs      ファイル入出力、トレイ常駐、グローバルショートカット
+  src/lib.rs        ファイル入出力、トレイ常駐、グローバルショートカット(Ctrl+Alt+T)
+  src/mouse_hook.rs マウスのサイドボタン(戻る/XBUTTON1)での呼び出し。Windows専用、低レベルフックで消費する
 ```
 
 ## 守るべき設計
