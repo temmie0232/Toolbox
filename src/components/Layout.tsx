@@ -2,12 +2,14 @@ import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useGuiMode } from '../lib/guiMode'
 import { useMode } from '../lib/mode'
 import { ShortcutSuspendContext, useShortcuts } from '../lib/useShortcuts'
 import { useSpotNav } from '../lib/useSpotNav'
 import { hideWindow, quitApp, setAlwaysOnTop } from '../storage'
 import { flushAllEdits, getSaveError, hasBlockingDraft, retrySave, useStore } from '../store'
 import { HintOverlay } from './HintOverlay'
+import { NavTabs, type NavItem } from './NavTabs'
 import { QuickJump } from './QuickJump'
 import { ShortcutHelp } from './ShortcutHelp'
 
@@ -20,10 +22,22 @@ const PIN_KEY = 'tool:pinned'
  */
 const IS_DEV = import.meta.env.DEV
 
+/**
+ * 画面切替(小文字=一覧 / 大文字=新規)。ショートカットのマップと GUIモードのタブ、
+ * 両方をこの1つの配列から組み立てる(二重管理を避ける)。
+ */
+const NAV_ITEMS: NavItem[] = [
+  { key: 't', upperKey: 'T', path: '/', newPath: '/tasks/new', label: 'タスク', match: (p) => p === '/' || p.startsWith('/tasks') },
+  { key: 'm', upperKey: 'M', path: '/memos', newPath: '/memos/new', label: 'メモ', match: (p) => p.startsWith('/memos') },
+  { key: 'r', upperKey: 'R', path: '/meetings', newPath: '/meetings/new', label: '議事録', match: (p) => p.startsWith('/meetings') },
+  { key: 's', upperKey: 'S', path: '/brainstorms', newPath: '/brainstorms/new', label: 'ブレスト', match: (p) => p.startsWith('/brainstorms') },
+]
+
 export function Layout() {
   const navigate = useNavigate()
   const location = useLocation()
   const { saveError } = useStore()
+  const gui = useGuiMode()
   const [helpOpen, setHelpOpen] = useState(false)
   // 札(f / Shift+F)。activate=false は「押さずにそこへ移るだけ」
   const [hint, setHint] = useState<{ activate: boolean } | null>(null)
@@ -33,6 +47,13 @@ export function Layout() {
   // 一時的な画面が出ている間は、下の画面のキーを全部止める
   const overlay = hint !== null || jumpOpen
 
+  /** 書きかけを流し切ってから隠す。ウィンドウを閉じる操作と GUIモードの✕ボタンの両方から呼ぶ */
+  const hideNow = useCallback(async () => {
+    await flushAllEdits()
+    // 保存できていないなら隠さない。バナーに気づかないまま放置されるのを防ぐ
+    if (!getSaveError()) await hideWindow()
+  }, [])
+
   /**
    * 常駐アプリなので、閉じる操作(Alt+F4・タスクバー)では終了せずに隠す。
    * 隠す前に書きかけの自動保存を流し切る。
@@ -41,14 +62,12 @@ export function Layout() {
     const win = getCurrentWindow()
     const unlisten = win.onCloseRequested(async (event) => {
       event.preventDefault()
-      await flushAllEdits()
-      // 保存できていないなら隠さない。バナーに気づかないまま放置されるのを防ぐ
-      if (!getSaveError()) await hideWindow()
+      await hideNow()
     })
     return () => {
       void unlisten.then((f) => f())
     }
-  }, [])
+  }, [hideNow])
 
   /** トレイの「終了」。保存を済ませてからプロセスを落とす */
   useEffect(() => {
@@ -146,16 +165,13 @@ export function Layout() {
   const onSettings = location.pathname === '/settings'
 
   const shortcuts = useMemo(() => {
-    const map: Record<string, () => void> = {
-      // 小文字が一覧、大文字が新規。4種類とも同じ規則にする
-      t: () => go('/'),
-      T: () => go('/tasks/new'),
-      m: () => go('/memos'),
-      M: () => go('/memos/new'),
-      r: () => go('/meetings'),
-      R: () => go('/meetings/new'),
-      s: () => go('/brainstorms'),
-      S: () => go('/brainstorms/new'),
+    const map: Record<string, () => void> = {}
+    // 小文字が一覧、大文字が新規。4種類とも同じ規則にする(NAV_ITEMS はタブとも共有)
+    for (const item of NAV_ITEMS) {
+      map[item.key] = () => go(item.path)
+      map[item.upperKey] = () => go(item.newPath)
+    }
+    Object.assign(map, {
       ',': toggleSettings,
       '?': () => setHelpOpen(true),
       // 札を出して一撃で飛ぶ。f は押す、Shift+F はそこへ移るだけ。
@@ -169,11 +185,23 @@ export function Layout() {
         // 設定は自前のEscを持たないので、ここで元の画面へ返す
         else if (onSettings) toggleSettings()
       },
-    }
+    })
     if (onSettings) map.h = toggleSettings
     return map
   }, [go, toggleSettings, onSettings, helpOpen])
   useShortcuts(shortcuts, !overlay)
+
+  /** 来た道を戻る・進む。Ctrl+O/Ctrl+I とGUIモードの矢印ボタンの両方から呼ぶ */
+  const historyGo = useCallback(
+    (delta: number) => {
+      if (hasBlockingDraft()) {
+        setBlocked(true)
+        return
+      }
+      navigate(delta)
+    },
+    [navigate],
+  )
 
   /** Ctrl+O / Ctrl+I で来た道を戻る・進む。開き直しの手間を無くす */
   useEffect(() => {
@@ -184,15 +212,11 @@ export function Layout() {
       const key = e.key.toLowerCase()
       if (key !== 'o' && key !== 'i') return
       e.preventDefault()
-      if (hasBlockingDraft()) {
-        setBlocked(true)
-        return
-      }
-      navigate(key === 'o' ? -1 : 1)
+      historyGo(key === 'o' ? -1 : 1)
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [navigate, overlay])
+  }, [overlay, historyGo])
 
   /**
    * j/k で画面の押せるものを一列に回る。全画面で共通なので、ここで1回だけ持つ。
@@ -210,29 +234,45 @@ export function Layout() {
         data-tauri-drag-region は使わない。あれはダブルクリックが最大化に
         固定されていて、こちらの用途(設定への行き来)に差し替えられないため
       */}
-      <div className="sticky top-0 z-20 flex justify-center bg-white pt-2 pb-1 select-none">
-        <div
-          className="cursor-grab px-6 py-1.5 active:cursor-grabbing"
-          title={
-            IS_DEV
-              ? '開発ビルド — 掴むと移動 / ダブルクリックで設定とショートカット'
-              : '掴むと移動 / ダブルクリックで設定とショートカット'
-          }
-          onMouseDown={(e) => {
-            if (e.button !== 0) return
-            // 2回目の押下はドラッグを始めない(そのままダブルクリックとして扱う)
-            if (e.detail >= 2) return
-            void getCurrentWindow().startDragging()
-          }}
-          onDoubleClick={toggleSettings}
-        >
-          {/* 開発版は取っ手を琥珀にする。一目で本番と区別が付く唯一の常設パーツ */}
+      <div className="sticky top-0 z-20 bg-white pt-2 pb-1 select-none">
+        <div className="flex justify-center">
           <div
-            className={`pointer-events-none h-1 w-10 rounded-full ${
-              IS_DEV ? 'bg-amber-400' : 'bg-neutral-300'
-            }`}
-          />
+            className="cursor-grab px-6 py-1.5 active:cursor-grabbing"
+            title={
+              IS_DEV
+                ? '開発ビルド — 掴むと移動 / ダブルクリックで設定とショートカット'
+                : '掴むと移動 / ダブルクリックで設定とショートカット'
+            }
+            onMouseDown={(e) => {
+              if (e.button !== 0) return
+              // 2回目の押下はドラッグを始めない(そのままダブルクリックとして扱う)
+              if (e.detail >= 2) return
+              void getCurrentWindow().startDragging()
+            }}
+            onDoubleClick={toggleSettings}
+          >
+            {/* 開発版は取っ手を琥珀にする。一目で本番と区別が付く唯一の常設パーツ */}
+            <div
+              className={`pointer-events-none h-1 w-10 rounded-full ${
+                IS_DEV ? 'bg-amber-400' : 'bg-neutral-300'
+              }`}
+            />
+          </div>
         </div>
+        {gui && (
+          <NavTabs
+            items={NAV_ITEMS}
+            pathname={location.pathname}
+            go={go}
+            onSettings={toggleSettings}
+            settingsActive={onSettings}
+            onHelp={() => setHelpOpen(true)}
+            onBack={() => historyGo(-1)}
+            onForward={() => historyGo(1)}
+            onMinimize={() => void getCurrentWindow().minimize()}
+            disabled={overlay}
+          />
+        )}
       </div>
 
       {saveError && (

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { GuiButton } from '../components/GuiButton'
 import { InlineText } from '../components/InlineText'
 import { TextBox } from '../components/TextBox'
 import { formatDateTime } from '../lib/date'
@@ -286,6 +287,7 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
 
   return (
     <div className="space-y-6">
+      <GuiButton label="← 一覧" hint="h" onClick={leave} />
       {/* 会議の枠。会議中はほとんど触らないので小さく置く */}
       <div className="space-y-1">
         <InlineText
@@ -448,23 +450,35 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
           ))}
           <span className="ml-1 text-xs text-neutral-400">{KIND_HINT[kind]}</span>
         </div>
-        <TextBox
-          ref={captureRef}
-          className="box-input"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            // 変換確定のEnterで登録してしまわないようにする
-            if (e.key === 'Enter' && !e.nativeEvent.isComposing && !e.ctrlKey && !e.metaKey) {
-              e.preventDefault()
+        <div className="flex gap-2">
+          <TextBox
+            ref={captureRef}
+            className="box-input"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              // 変換確定のEnterで登録してしまわないようにする
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing && !e.ctrlKey && !e.metaKey) {
+                e.preventDefault()
+                void add()
+              }
+              // Esc は入力モードを抜けるだけ(画面は動かない)。種別の切替は画面全体で拾う
+            }}
+            placeholder="ここに放り込む(Enterで確定)"
+            aria-label="議事録に追加"
+            autoFocus
+          />
+          <GuiButton
+            label="追加"
+            hint="Enter"
+            variant="primary"
+            onClick={() => {
               void add()
-            }
-            // Esc は入力モードを抜けるだけ(画面は動かない)。種別の切替は画面全体で拾う
-          }}
-          placeholder="ここに放り込む(Enterで確定)"
-          aria-label="議事録に追加"
-          autoFocus
-        />
+              // クリックで入力欄からフォーカスが外れ、入力モードが移動モードへ落ちるのを防ぐ
+              enterInsert(captureRef.current)
+            }}
+          />
+        </div>
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}

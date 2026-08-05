@@ -1,6 +1,8 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { GuiButton } from '../components/GuiButton'
 import { formatDateTime } from '../lib/date'
+import { useGuiMode } from '../lib/guiMode'
 import { memoSummary } from '../lib/memoSummary'
 import { useInitialMode } from '../lib/mode'
 import { useShortcuts } from '../lib/useShortcuts'
@@ -10,6 +12,7 @@ import { MEMO_TYPE_LABEL } from '../types'
 export function MemoList() {
   const { status, memos, tasks } = useStore()
   const navigate = useNavigate()
+  const gui = useGuiMode()
   useInitialMode('normal')
 
   const sorted = useMemo(
@@ -21,11 +24,18 @@ export function MemoList() {
     return (id?: string) => (id ? (map.get(id) ?? '') : '')
   }, [tasks])
 
-  const shortcuts = useMemo(() => ({ o: () => navigate('/memos/new') }), [navigate])
+  const openNew = useCallback(() => navigate('/memos/new'), [navigate])
+  const shortcuts = useMemo(() => ({ o: openNew }), [openNew])
   useShortcuts(shortcuts)
 
   return (
     <div className="space-y-6">
+      {gui && (
+        <div className="flex justify-end">
+          <GuiButton label="新規" hint="o" variant="primary" onClick={openNew} />
+        </div>
+      )}
+
       {status === 'loading' && <p className="text-sm text-neutral-500">読み込み中…</p>}
 
       {status === 'ready' && sorted.length === 0 && (

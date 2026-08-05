@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ConfirmBadge } from '../components/Badges'
 import { DeadlinePick } from '../components/DeadlinePick'
 import { Field } from '../components/Field'
+import { GuiButton } from '../components/GuiButton'
 import { TextArea, TextBox } from '../components/TextBox'
 import { formatDateTime } from '../lib/date'
 import { newId } from '../lib/id'
@@ -231,6 +232,7 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
   return (
     <div className="space-y-8">
       <div className="space-y-3">
+        <GuiButton label="← 一覧" hint="h" onClick={leave} />
         <div className="flex items-start gap-3">
           <TextBox
             className="box-input flex-1 text-base font-medium"

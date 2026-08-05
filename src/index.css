@@ -83,6 +83,21 @@
     scroll-margin-block: 2.5rem;
   }
 
+  /*
+    GUIモードはタブ列ぶん、上の固定ヘッダーが高くなる(components/NavTabs.tsx)。
+    そのままだと j/k で寄せた行がタブの裏に隠れるので、上側だけ広げる
+  */
+  [data-gui='on'] a[href],
+  [data-gui='on'] button,
+  [data-gui='on'] input,
+  [data-gui='on'] textarea,
+  [data-gui='on'] select,
+  [data-gui='on'] summary,
+  [data-gui='on'] audio[controls],
+  [data-gui='on'] [tabindex] {
+    scroll-margin-block-start: 4.75rem;
+  }
+
   kbd {
     @apply rounded border border-neutral-300 bg-neutral-50 px-1.5 py-0.5 font-mono text-[11px] text-neutral-600;
   }

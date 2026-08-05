@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ConfirmBadge, StatusBadge } from '../components/Badges'
+import { GuiButton } from '../components/GuiButton'
 import { daysUntil, deadlineLabel } from '../lib/date'
+import { useGuiMode } from '../lib/guiMode'
 import { useInitialMode } from '../lib/mode'
 import { useNumberShortcuts, useShortcuts } from '../lib/useShortcuts'
 import { updateTaskWith, useStore } from '../store'
@@ -22,6 +24,7 @@ function byDeadline(a: Task, b: Task): number {
 export function TaskList() {
   const { status, tasks } = useStore()
   const navigate = useNavigate()
+  const gui = useGuiMode()
   useInitialMode('normal')
 
   const { open, done } = useMemo(() => {
@@ -45,26 +48,39 @@ export function TaskList() {
   // 書き込みの失敗は store が拾って上部のバナーに出す。ここで握り潰しても黙りはしない
   const write = (work: Promise<void>) => void work.catch(() => undefined)
 
+  const openNew = useCallback(() => navigate('/tasks/new'), [navigate])
+
+  // GUIモードの行ボタンとキーボードの両方から呼ぶので、対象のidを引数に取る形にしておく
+  const applyStatus = useCallback(
+    (id: string, next: TaskStatus) => write(updateTaskWith(id, () => ({ status: next }))),
+    [],
+  )
+  const toggleDone = useCallback(
+    (id: string) =>
+      write(
+        updateTaskWith(id, (t) => ({ status: t.status === 'done' ? 'in_progress' : 'done' })),
+      ),
+    [],
+  )
+
   const setStatus = useCallback(
     (next: TaskStatus) => {
       const id = focusedTaskId()
-      if (!id) return
-      write(updateTaskWith(id, () => ({ status: next })))
+      if (id) applyStatus(id, next)
     },
-    [focusedTaskId],
+    [focusedTaskId, applyStatus],
   )
 
   const shortcuts = useMemo(
     () => ({
-      o: () => navigate('/tasks/new'),
+      o: openNew,
       // x: 完了 ⇄ 作業中 の行き来。一覧で片付ける動作は連打になるので1キーにする
       x: () => {
         const id = focusedTaskId()
-        if (!id) return
-        write(updateTaskWith(id, (t) => ({ status: t.status === 'done' ? 'in_progress' : 'done' })))
+        if (id) toggleDone(id)
       },
     }),
-    [navigate, focusedTaskId],
+    [openNew, focusedTaskId, toggleDone],
   )
   useShortcuts(shortcuts)
 
@@ -93,6 +109,12 @@ export function TaskList() {
 
   return (
     <div className="space-y-6">
+      {gui && (
+        <div className="flex justify-end">
+          <GuiButton label="新規" hint="o" variant="primary" onClick={openNew} />
+        </div>
+      )}
+
       {status === 'loading' && <p className="text-sm text-neutral-500">読み込み中…</p>}
 
       {status === 'ready' && open.length === 0 && done.length === 0 && (
@@ -107,7 +129,13 @@ export function TaskList() {
       {open.length > 0 && (
         <ul className="divide-y divide-neutral-100 border-y border-neutral-100">
           {open.map((task) => (
-            <TaskRow key={task.id} task={task} />
+            <TaskRow
+              key={task.id}
+              task={task}
+              gui={gui}
+              onToggleDone={toggleDone}
+              onCycleStatus={(id) => applyStatus(id, nextTaskStatus(task.status))}
+            />
           ))}
         </ul>
       )}
@@ -119,7 +147,13 @@ export function TaskList() {
           </summary>
           <ul className="mt-2 divide-y divide-neutral-100 border-y border-neutral-100">
             {done.map((task) => (
-              <TaskRow key={task.id} task={task} />
+              <TaskRow
+                key={task.id}
+                task={task}
+                gui={gui}
+                onToggleDone={toggleDone}
+                onCycleStatus={(id) => applyStatus(id, nextTaskStatus(task.status))}
+              />
             ))}
           </ul>
         </details>
@@ -128,7 +162,20 @@ export function TaskList() {
   )
 }
 
-function TaskRow({ task }: { task: Task }) {
+/** Ctrl+1〜4 のマウス版。行のボタンは4つ並べず、1つ押すたびに次のステータスへ送る */
+function nextTaskStatus(current: TaskStatus): TaskStatus {
+  const i = TASK_STATUS_ORDER.indexOf(current)
+  return TASK_STATUS_ORDER[(i + 1) % TASK_STATUS_ORDER.length]
+}
+
+interface TaskRowProps {
+  task: Task
+  gui: boolean
+  onToggleDone: (id: string) => void
+  onCycleStatus: (id: string) => void
+}
+
+function TaskRow({ task, gui, onToggleDone, onCycleStatus }: TaskRowProps) {
   const unresolved = task.questions.filter((q) => !q.resolved).length
   const diff = task.deadline !== undefined ? daysUntil(task.deadline) : null
 
@@ -143,12 +190,12 @@ function TaskRow({ task }: { task: Task }) {
           : 'text-neutral-500'
 
   return (
-    <li>
+    <li className="flex items-center">
       <Link
         to={`/tasks/${task.id}`}
         data-task-id={task.id}
         onClick={() => sessionStorage.setItem('tool:lastTaskId', task.id)}
-        className="flex items-center gap-3 px-1 py-2.5 hover:bg-neutral-50"
+        className="flex flex-1 items-center gap-3 px-1 py-2.5 hover:bg-neutral-50"
       >
         <span className={`w-20 shrink-0 text-xs ${deadlineClass}`}>
           {deadlineLabel(task.deadline)}
@@ -161,6 +208,16 @@ function TaskRow({ task }: { task: Task }) {
         {needsConfirmation(task) && <ConfirmBadge count={unresolved} />}
         <StatusBadge status={task.status} />
       </Link>
+      {gui && (
+        <span data-secondary className="flex shrink-0 items-center gap-1 pr-1">
+          <GuiButton
+            label={task.status === 'done' ? '↺' : '✓'}
+            hint="x"
+            onClick={() => onToggleDone(task.id)}
+          />
+          <GuiButton label="▾" hint="Ctrl+1〜4" onClick={() => onCycleStatus(task.id)} />
+        </span>
+      )}
     </li>
   )
 }

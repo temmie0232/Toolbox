@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { ShortcutList } from '../components/ShortcutList'
 import { exportBackup, pickBackup } from '../lib/backup'
 import { formatDateTime } from '../lib/date'
+import { setGuiMode, useGuiMode } from '../lib/guiMode'
 import { useInitialMode } from '../lib/mode'
 import { dataFilePath, openDataDir } from '../storage'
 import { clearAllData, markBackedUp, replaceAllData, useStore } from '../store'
@@ -11,6 +12,7 @@ type Notice = { kind: 'ok' | 'error'; text: string } | null
 
 export function Settings() {
   const { tasks, memos, meetings, brainstorms, lastBackupAt } = useStore()
+  const gui = useGuiMode()
   useInitialMode('normal')
   const [notice, setNotice] = useState<Notice>(null)
   const [confirmClear, setConfirmClear] = useState(false)
@@ -79,7 +81,26 @@ export function Settings() {
         </p>
       </div>
 
-      <section className="space-y-3">
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold text-neutral-900">GUIモード</h2>
+        <p className="text-xs text-neutral-500">
+          画面の上に切替タブを、各画面に操作ボタンを出します。
+          <strong>キーボードの操作は今までどおり全部効きます</strong>
+          (ボタンが増えるだけで、キーは1つも減りません)。増えたボタンは <kbd>j</kbd> <kbd>k</kbd>{' '}
+          の列にも <kbd>Tab</kbd> にも 札(<kbd>f</kbd>)にも入らないので、キーで使う速さは変わりません。
+        </p>
+        <label className="flex w-fit items-center gap-2 text-sm text-neutral-800">
+          <input
+            type="checkbox"
+            className="size-4 accent-blue-600"
+            checked={gui}
+            onChange={(e) => setGuiMode(e.target.checked)}
+          />
+          ボタンとタブを表示する
+        </label>
+      </section>
+
+      <section className="space-y-3 border-t border-neutral-100 pt-6">
         <h2 className="text-sm font-semibold text-neutral-900">ショートカット</h2>
         <ShortcutList />
       </section>

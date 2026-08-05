@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { GuiButton } from '../components/GuiButton'
 import { InlineText } from '../components/InlineText'
 import { TextBox } from '../components/TextBox'
 import { useInitialMode, useModeActions, useOnExitInsert } from '../lib/mode'
@@ -164,16 +165,18 @@ function BrainstormBody({ brainstorm }: { brainstorm: Brainstorm }) {
   const textRef = useRef('')
   textRef.current = text
 
+  const leave = useCallback(() => navigate('/brainstorms'), [navigate])
+
   const shortcuts = useMemo(
     () => ({
       Escape: () => {
         if (textRef.current) setText('')
-        else navigate('/brainstorms')
+        else leave()
       },
-      h: () => navigate('/brainstorms'),
+      h: leave,
       a: () => enterInsert(inputRef.current),
     }),
-    [navigate, enterInsert],
+    [leave, enterInsert],
   )
   useShortcuts(shortcuts)
 
@@ -195,6 +198,7 @@ function BrainstormBody({ brainstorm }: { brainstorm: Brainstorm }) {
 
   return (
     <div className="space-y-5">
+      <GuiButton label="← 一覧" hint="h" onClick={leave} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
           <InlineText
@@ -233,22 +237,34 @@ function BrainstormBody({ brainstorm }: { brainstorm: Brainstorm }) {
               {brainstorm.limitMinutes}分で始める
             </button>
           ) : (
-            <TextBox
-              ref={inputRef}
-              className="box-input"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-                  e.preventDefault()
+            <div className="flex gap-2">
+              <TextBox
+                ref={inputRef}
+                className="box-input"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                    e.preventDefault()
+                    void add()
+                  }
+                  // Esc は入力モードを抜けるだけ(画面は動かない)
+                }}
+                placeholder={timeUp ? '時間切れ。まだ出せるなら続けてよい' : '思いついたまま(Enterで確定)'}
+                aria-label="カードを追加"
+                autoFocus
+              />
+              <GuiButton
+                label="追加"
+                hint="Enter"
+                variant="primary"
+                onClick={() => {
                   void add()
-                }
-                // Esc は入力モードを抜けるだけ(画面は動かない)
-              }}
-              placeholder={timeUp ? '時間切れ。まだ出せるなら続けてよい' : '思いついたまま(Enterで確定)'}
-              aria-label="カードを追加"
-              autoFocus
-            />
+                  // クリックで入力欄からフォーカスが外れ、入力モードが移動モードへ落ちるのを防ぐ
+                  enterInsert(inputRef.current)
+                }}
+              />
+            </div>
           )}
 
           {timeUp && (

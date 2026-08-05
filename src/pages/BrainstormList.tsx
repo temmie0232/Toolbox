@@ -1,6 +1,8 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { GuiButton } from '../components/GuiButton'
 import { formatDateTime } from '../lib/date'
+import { useGuiMode } from '../lib/guiMode'
 import { useInitialMode } from '../lib/mode'
 import { useShortcuts } from '../lib/useShortcuts'
 import { useStore } from '../store'
@@ -8,6 +10,7 @@ import { useStore } from '../store'
 export function BrainstormList() {
   const { status, brainstorms } = useStore()
   const navigate = useNavigate()
+  const gui = useGuiMode()
   useInitialMode('normal')
 
   const sorted = useMemo(
@@ -15,11 +18,18 @@ export function BrainstormList() {
     [brainstorms],
   )
 
-  const shortcuts = useMemo(() => ({ o: () => navigate('/brainstorms/new') }), [navigate])
+  const openNew = useCallback(() => navigate('/brainstorms/new'), [navigate])
+  const shortcuts = useMemo(() => ({ o: openNew }), [openNew])
   useShortcuts(shortcuts)
 
   return (
     <div className="space-y-6">
+      {gui && (
+        <div className="flex justify-end">
+          <GuiButton label="新規" hint="o" variant="primary" onClick={openNew} />
+        </div>
+      )}
+
       {status === 'loading' && <p className="text-sm text-neutral-500">読み込み中…</p>}
 
       {status === 'ready' && sorted.length === 0 && (
