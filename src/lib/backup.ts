@@ -4,8 +4,6 @@ import {
   MINUTE_KIND_ORDER,
   TASK_STATUS_ORDER,
   type BackupFile,
-  type BrainCard,
-  type Brainstorm,
   type Meeting,
   type Memo,
   type MemoType,
@@ -26,7 +24,6 @@ export async function exportBackup(
   tasks: Task[],
   memos: Memo[],
   meetings: Meeting[],
-  brainstorms: Brainstorm[],
 ): Promise<string | null> {
   const path = await save({
     title: 'バックアップの保存先',
@@ -41,7 +38,6 @@ export async function exportBackup(
     tasks,
     memos,
     meetings,
-    brainstorms,
   }
   await writeTextFile(path, JSON.stringify(data, null, 2))
   return path
@@ -52,7 +48,6 @@ export interface PickedBackup {
   tasks: Task[]
   memos: Memo[]
   meetings: Meeting[]
-  brainstorms: Brainstorm[]
 }
 
 /** 開くダイアログを出してJSONを読む。キャンセルされたら null */
@@ -102,7 +97,6 @@ export function parseBackup(text: string): {
   tasks: Task[]
   memos: Memo[]
   meetings: Meeting[]
-  brainstorms: Brainstorm[]
 } {
   let raw: unknown
   try {
@@ -215,32 +209,6 @@ export function parseBackup(text: string): {
     }
   })
 
-  const rawBrainstorms = Array.isArray(data.brainstorms) ? data.brainstorms : []
-  const brainstorms: Brainstorm[] = rawBrainstorms.map((item, index) => {
-    const b = item as Partial<Brainstorm>
-    if (typeof b.id !== 'string') {
-      throw new BackupParseError(`${index + 1}件目のブレストにidがありません`)
-    }
-    const cards: BrainCard[] = Array.isArray(b.cards)
-      ? b.cards
-          .filter((c): c is BrainCard => typeof c?.id === 'string')
-          .map((c) => ({
-            id: c.id,
-            text: str(c.text),
-            group: optionalStr(c.group),
-            createdAt: str(c.createdAt, new Date().toISOString()),
-          }))
-      : []
-    return {
-      id: b.id,
-      theme: str(b.theme),
-      limitMinutes: typeof b.limitMinutes === 'number' && b.limitMinutes > 0 ? b.limitMinutes : 5,
-      startedAt: optionalStr(b.startedAt),
-      cards,
-      createdAt: str(b.createdAt, new Date().toISOString()),
-      updatedAt: str(b.updatedAt, str(b.createdAt, new Date().toISOString())),
-    }
-  })
-
-  return { tasks, memos, meetings, brainstorms }
+  // ブレストは廃止した。古いバックアップに brainstorms が入っていても読み飛ばす
+  return { tasks, memos, meetings }
 }

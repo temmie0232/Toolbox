@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { DeletePrompt } from '../components/DeletePrompt'
 import { GuiButton } from '../components/GuiButton'
 import { InlineText } from '../components/InlineText'
 import { TextBox } from '../components/TextBox'
 import { formatDateTime } from '../lib/date'
 import { useInitialMode, useModeActions } from '../lib/mode'
+import { useDeleteCommand } from '../lib/useDeleteCommand'
 import { REWIND_SECONDS, formatOffset, useRecording } from '../lib/useRecording'
 import { useNumberShortcuts, useShortcuts } from '../lib/useShortcuts'
 import {
@@ -174,7 +176,6 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
   const [kind, setKind] = useState<MinuteKind>('decision')
   const [text, setText] = useState('')
   const [error, setError] = useState('')
-  const [confirmDelete, setConfirmDelete] = useState(false)
   const captureRef = useRef<HTMLInputElement>(null)
 
   const run = useCallback(async (work: () => Promise<unknown>) => {
@@ -204,6 +205,20 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
     onRecordingDiscarded,
   )
   const [confirmRedo, setConfirmRedo] = useState(false)
+
+  /**
+   * どこからでも Ctrl+E で来たときは、着いた瞬間に録音を始める。
+   * 印は一度使ったら履歴から消す。残すと Ctrl+O で戻ってきたときに勝手に録り直しが始まる
+   */
+  const location = useLocation()
+  const autoRecord = (location.state as { autoRecord?: boolean } | null)?.autoRecord === true
+  const autoRecordUsed = useRef(false)
+  useEffect(() => {
+    if (!autoRecord || autoRecordUsed.current) return
+    autoRecordUsed.current = true
+    navigate(location.pathname, { replace: true, state: null })
+    void rec.start()
+  }, [autoRecord, location.pathname, navigate, rec])
 
   const add = async () => {
     const value = text.trim()
@@ -259,6 +274,20 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
   const textRef = useRef('')
   textRef.current = text
 
+  // d でこの議事録を消す(1回目は確認)。録音中は消させない
+  const del = useDeleteCommand({
+    resolve: () => ({
+      id: meeting.id,
+      kind: '議事録',
+      name: meeting.title || '(無題)',
+      note: meeting.recording ? '録音も消えます' : undefined,
+    }),
+    remove: () =>
+      run(() => removeMeeting(meeting.id)).then((ok) => void (ok && navigate('/meetings'))),
+    blocked: () =>
+      recordingRef.current ? '録音中です。Ctrl+E で止めてから消してください。' : undefined,
+  })
+
   const shortcuts = useMemo(
     () => ({
       Escape: () => {
@@ -267,8 +296,9 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
       },
       h: leave,
       a: () => enterInsert(captureRef.current),
+      d: del.press,
     }),
-    [leave, enterInsert],
+    [leave, enterInsert, del.press],
   )
   useShortcuts(shortcuts)
 
@@ -614,30 +644,13 @@ function MeetingBody({ meeting }: { meeting: Meeting }) {
 
       <div className="flex items-center justify-between border-t border-neutral-100 pt-4">
         <span className="text-xs text-neutral-400">更新 {formatDateTime(meeting.updatedAt)}</span>
-        {confirmDelete ? (
-          <span className="flex items-center gap-2">
-            <span className="text-xs text-neutral-600">この議事録を削除する?</span>
-            <button
-              type="button"
-              className="btn-danger"
-              onClick={() =>
-                void run(() => removeMeeting(meeting.id)).then(
-                  (ok) => ok && navigate('/meetings'),
-                )
-              }
-            >
-              削除する
-            </button>
-            <button type="button" className="btn-ghost" onClick={() => setConfirmDelete(false)}>
-              やめる
-            </button>
-          </span>
-        ) : (
-          <button type="button" className="btn-danger" onClick={() => setConfirmDelete(true)}>
-            削除
-          </button>
-        )}
+        {/* 確認は画面下に固定で出る(DeletePrompt)。ここは入口だけ */}
+        <button type="button" className="btn-danger" onClick={del.press}>
+          削除 <kbd>d</kbd>
+        </button>
       </div>
+
+      <DeletePrompt {...del} />
     </div>
   )
 }

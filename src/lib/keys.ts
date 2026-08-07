@@ -44,6 +44,15 @@ export function isTextEntry(target: EventTarget | null): boolean {
   return false
 }
 
+/**
+ * 改行が入る欄。素の Enter を改行に使えるのはここだけ。
+ * 1行の欄で素の Enter を殺すと、打鍵が死ぬうえ form の既定動作で保存が走る
+ */
+export function isMultilineEntry(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  return target instanceof HTMLTextAreaElement || target.isContentEditable
+}
+
 /** 選択肢と日付。readOnly では守れないので、移動中はキー自体を通さない */
 export function isStepControl(target: EventTarget | null): boolean {
   if (target instanceof HTMLSelectElement) return true

@@ -51,7 +51,7 @@ interface QuickJumpProps {
 }
 
 export function QuickJump({ onPick, onClose }: QuickJumpProps) {
-  const { tasks, memos, meetings, brainstorms } = useStore()
+  const { tasks, memos, meetings } = useStore()
   const [query, setQuery] = useState('')
   const [index, setIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -101,18 +101,8 @@ export function QuickJump({ onPick, onClose }: QuickJumpProps) {
         flag: openTodos > 0 ? `TODO ${openTodos}` : undefined,
       })
     }
-    for (const b of brainstorms) {
-      list.push({
-        key: `brainstorm-${b.id}`,
-        kind: 'ブレスト',
-        title: b.theme || '(テーマなし)',
-        sub: `${b.cards.length}件`,
-        path: `/brainstorms/${b.id}`,
-        at: b.updatedAt,
-      })
-    }
     return list.sort((a, b) => (a.at > b.at ? -1 : 1))
-  }, [tasks, memos, meetings, brainstorms])
+  }, [tasks, memos, meetings])
 
   const hits = useMemo<Entry[]>(() => {
     const q = query.trim().toLowerCase()

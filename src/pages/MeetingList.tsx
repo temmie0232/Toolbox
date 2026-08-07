@@ -1,11 +1,13 @@
 import { useCallback, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { DeletePrompt } from '../components/DeletePrompt'
 import { GuiButton } from '../components/GuiButton'
 import { formatDateTime } from '../lib/date'
 import { useGuiMode } from '../lib/guiMode'
 import { useInitialMode } from '../lib/mode'
+import { focusedItemId, useDeleteCommand } from '../lib/useDeleteCommand'
 import { useShortcuts } from '../lib/useShortcuts'
-import { useStore } from '../store'
+import { removeMeeting, useStore } from '../store'
 import { meetingSummary } from '../types'
 
 export function MeetingList() {
@@ -20,7 +22,24 @@ export function MeetingList() {
   )
 
   const openNew = useCallback(() => navigate('/meetings/new'), [navigate])
-  const shortcuts = useMemo(() => ({ o: openNew }), [openNew])
+
+  // d で乗っている行を消す(1回目は確認)
+  const del = useDeleteCommand({
+    resolve: () => {
+      const meeting = meetings.find((m) => m.id === focusedItemId())
+      if (!meeting) return undefined
+      return {
+        id: meeting.id,
+        kind: '議事録',
+        name: meeting.title || '(無題)',
+        note: meeting.recording ? '録音も消えます' : undefined,
+      }
+    },
+    remove: (target) => removeMeeting(target.id),
+    emptyHint: '消す議事録の行に乗ってから d(j / k で乗る)',
+  })
+
+  const shortcuts = useMemo(() => ({ o: openNew, d: del.press }), [openNew, del.press])
   useShortcuts(shortcuts)
 
   return (
@@ -50,6 +69,7 @@ export function MeetingList() {
               <li key={meeting.id}>
                 <Link
                   to={`/meetings/${meeting.id}`}
+                  data-item-id={meeting.id}
                   className="flex items-center gap-3 px-1 py-2.5 hover:bg-neutral-50"
                 >
                   <span className="w-28 shrink-0 text-xs text-neutral-500">
@@ -72,6 +92,8 @@ export function MeetingList() {
           })}
         </ul>
       )}
+
+      <DeletePrompt {...del} />
     </div>
   )
 }

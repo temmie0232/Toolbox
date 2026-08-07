@@ -6,6 +6,7 @@
 
 - 設計書は「ブラウザ + IndexedDB」だが、**Tauri v2 のネイティブアプリ**に変更した(データはファイル保存になり、ブラウザのデータ消去で消える弱点が消えた)
 - Phase 2 の **AI壁打ち(Gemini)は実装しない**方針になった。結果として**このアプリは一切通信しない**
+- **ブレスト(時間制限 + KJ法)は削除した。**一度作ったが使わなかった。`s` / `S` は空いている。古いバックアップJSONの `brainstorms` は `parseBackup` が黙って読み飛ばす
 
 ## コマンド
 
@@ -28,7 +29,7 @@ npm run typecheck
 
 ```
 src/
-  types.ts        データモデル(Task / Memo / Meeting / Brainstorm)
+  types.ts        データモデル(Task / Memo / Meeting)
   storage.ts      Rustコマンド越しのファイル入出力
   store.ts        アプリ全体の状態。全ての変更はここを通す
   lib/
@@ -36,10 +37,11 @@ src/
     mode.tsx      移動 / 入力の2モード。Escの先取りもここ
     useShortcuts  単キー・Ctrl+数字・Ctrl+Enter・破棄の確認
     useSpotNav    j/k/gg/G/Enter/i。Layoutが全画面ぶん1つ持つ
+    useDeleteCommand  d で1件消す(構える→もう一度で消える)。一覧と詳細で共通
     memoImages    メモに貼った画像。本文の印とファイルの出し入れ
     その他        日付・ID・バックアップ・録音
-  components/     Layout(枠) / Field(箱) / TextBox(入力欄) / Badges / ShortcutHelp / MemoImages(貼った画像の帯と拡大)
-  pages/          タスク一覧・受信箱・詳細、メモ、議事録、ブレスト、設定
+  components/     Layout(枠) / Field(箱) / TextBox(入力欄) / Badges / ShortcutHelp / MemoImages(貼った画像の帯と拡大) / DeletePrompt(削除の確認)
+  pages/          タスク一覧・受信箱・詳細、メモ、議事録、設定
 src-tauri/
   src/lib.rs        ファイル入出力、トレイ常駐、グローバルショートカット(Ctrl+Alt+T)
   src/mouse_hook.rs マウスのサイドボタン(戻る/XBUTTON1)での呼び出し。Windows専用、低レベルフックで消費する
@@ -61,18 +63,21 @@ src-tauri/
 - **Esc は入力を抜けるだけ。画面を閉じてはいけない。**画面を出るのは移動モードの Esc。ModeProvider が capture で Esc を先取りして止めているので、入力中の Esc は画面側にも各欄の `onKeyDown` にも届かない。欄の中で「Escで書きかけを戻す」をやるなら `useOnExitInsert` を使う
 - `jk` も入力を抜ける(`handleEscapeChord`)。**`jj` にはできない。**開始と終了が同じ文字だと、本文として打った `j` が1打目の役を奪う(「xyzj」の後に `jj` すると本文の `j` が消える)。本文の `j` と脱出の `j` は観測できる情報が完全に同じなので、先読みにしても解けない(vim の `inoremap jj <Esc>` も同じ)。終了を `k` にすると保留中の `j` は常に最後のものに上書きされ、曖昧さが消える
 - その `jk` も、**`j` を先読みで待たせない。**待たせると `j` を打つたびに 300ms 遅れる。`k` が来た時点で `j` を `removeCharBefore` で取り消す。取り消せる input / textarea でだけ効かせる(選択肢の欄は `j` で値が動いて戻せない)。日本語入力中は `e.key` が `Process` になるので当たらない — そこは Esc の担当
-- **箱を埋める画面(メモ・タスク)の Enter は「次の箱へ」**(`lib/useFieldChain.ts`)。改行は `Shift+Enter`、全体の保存は `Ctrl+Enter`。列の順番は `spotsIn` が見た画面の上から下なので、箱を足しても勝手に入る(順番を二重管理しない)。最後の箱では動かない(改行も入れない — 箱によって Enter の意味が変わるほうが困る)
-  - 欄が自分で Enter を持っている場合(タスク詳細の疑問点の追加欄)は、欄側の `preventDefault` を見て降りる。**議事録・ブレストには入れない。**あちらの Enter は「打ちかけの行を確定して追加」で、意味がぶつかる
+- **箱を埋める画面(メモ編集・タスク新規・タスク詳細)の送りは `Shift+Enter`**(`lib/useFieldChain.ts`)。素の `Enter` は改行、全体の保存は `Ctrl+Enter`。列の順番は `spotsIn` が見た画面の上から下なので、箱を足しても勝手に入る(順番を二重管理しない)。最後の箱では動かない(改行も入れない — 箱によって送りの意味が変わるほうが困る)
+  - **ただし1行の箱(`input`)では素の `Enter` も送り。**`isMultilineEntry` で分ける。改行が入りようのない欄で `Enter` を潰すと、打鍵が死ぬだけでなく `form` の既定動作で保存が走る
+  - 欄が自分で Enter を持っている場合(タスク詳細の疑問点の追加欄)は、欄側の `preventDefault` を見て降りる。**議事録には入れない。**あちらの Enter は「打ちかけの行を確定して追加」で、意味がぶつかる
   - 移動モードの Enter は今までどおり `useSpotNav`(箱なら書き始める / それ以外は押す)。ModeProvider が capture で止めているのでこの列には来ない
 - **文字を打つ欄は `TextBox` / `TextArea` で書く。**素の `<input>`/`<textarea>` だとその欄だけ移動モードで文字が入ってしまう。readOnly にするのが要点で、`preventDefault` では日本語入力が止まらない(IMEはキーイベントの手前で食う)
 - 押せるものを増やしたら、`j`/`k` の列(`lib/keys.ts` の `SPOT_SELECTOR`)に入るか確かめる。入らないとそこへ辿り着けず、マウスに手が伸びる
 - **行数に比例する操作を足さない。**`j`/`k` は近づく動きなので件数ぶん遅くなる。速さを足すときは `f`(札) `/`(絞り込み) `Ctrl+数字` のような**件数に依らない**口を足す
 - 行の付属品(期限チップ・行ごとの削除・キー割り当て済みのボタン群)は `data-secondary` を付けて `j`/`k` の列から外す。Tab と 札(f) では届くので、行けなくなるものは作らない
+- **消す操作は `d` に集約する(`lib/useDeleteCommand.ts`)。**1回目は構えるだけ、同じ対象でもう一度の `d` で消える(vim の `dd`)。確認は必ず**名前を出して**画面下に固定で出す(`DeletePrompt`)——詳細画面は縦に長く、削除欄の位置に出すと見えないまま消えることがある。構えたまま別の行へ移ったら**消さずに構え直す**(「Aで構える → j → d」でBが消えるのを防ぐ)。Esc は `useEscapeOwner` で取るので、画面側の Esc(一覧へ戻る)とは食い合わない。一覧で対象になるのは `data-item-id` を持つ行
 - **一時的な画面(札・絞り込み)は `useEscapeOwner` で Esc を取る。**取らないと ModeProvider の Esc と食い合う
 - **`navigate` を新しい経路で呼ぶときは `registerDraftGuard` を通す。**Layout の `go()` を使うこと。直に navigate すると新規作成の書きかけを黙って捨てる
 - リンク(`<Link>`)は React Router が自前で click を拾うので `go()` を通らない。Layout が capture で click を受けて止めている。**この choke point を外すと、録音中にリンクを踏んで録音が切れる**
 - **日本語入力の変換中のキーをショートカットにしない。**`isComposing` を必ず見る。ここを外すと変換確定のEnterで誤動作する
 - Layout のグローバルキーと画面ごとのキーは**両方のリスナーが発火する**。同じキーを二重に割り当てない。`j k g G Enter i` は Layout が全画面ぶん持っているので、画面側で使わない
+- **`Ctrl+E` は Layout と議事録詳細で意味が違う**(どこからでも録音開始 / 一時停止・再開)。両方のリスナーが発火するので、Layout 側はパスを見て詳細画面では自分を張らない。録音機は詳細画面が持つので、Layout は空の議事録を作って `state: { autoRecord: true }` を積むだけ。詳細側はその印を使ったら `replace` で消す(残すと `Ctrl+O` で戻るたびに録り直しが始まる)。`getDisplayMedia` はキー入力の一時的な操作権が要るので、この経路に確認画面や待ちを挟まない
 - 画面ごとに `useInitialMode()` を呼ぶ。開いた瞬間に打ちに来る画面(新規作成・議事録)だけ `'insert'`
 
 **開発ビルドと本番の見分け**

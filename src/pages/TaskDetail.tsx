@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ConfirmBadge } from '../components/Badges'
 import { DeadlinePick } from '../components/DeadlinePick'
+import { DeletePrompt } from '../components/DeletePrompt'
 import { Field } from '../components/Field'
 import { GuiButton } from '../components/GuiButton'
 import { TextArea, TextBox } from '../components/TextBox'
@@ -9,6 +10,7 @@ import { formatDateTime } from '../lib/date'
 import { newId } from '../lib/id'
 import { memoSummary } from '../lib/memoSummary'
 import { useInitialMode, useModeActions } from '../lib/mode'
+import { useDeleteCommand } from '../lib/useDeleteCommand'
 import { useFieldChain } from '../lib/useFieldChain'
 import { useNumberShortcuts, useSaveShortcut, useShortcuts } from '../lib/useShortcuts'
 import { registerFlush, removeTask, updateTaskWith, useStore } from '../store'
@@ -75,7 +77,6 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
   const [deadline, setDeadline] = useState(task.deadline ?? '')
   const [newQuestion, setNewQuestion] = useState('')
   const [error, setError] = useState('')
-  const [confirmDelete, setConfirmDelete] = useState(false)
   const [copied, setCopied] = useState(false)
 
   const dirty =
@@ -157,6 +158,17 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
   const questionInputRef = useRef<HTMLInputElement>(null)
   const copyRef = useRef<() => Promise<void>>(null)
 
+  // d でこのタスクを消す(1回目は確認)。下の「削除」ボタンもここを通る
+  const del = useDeleteCommand({
+    resolve: () => ({
+      id: task.id,
+      kind: 'タスク',
+      name: task.title || '(無題)',
+      note: '紐付いたメモは残ります',
+    }),
+    remove: () => run(() => removeTask(task.id)).then((ok) => void (ok && onDeleted())),
+  })
+
   const shortcuts = useMemo(
     () => ({
       Escape: leave,
@@ -164,8 +176,9 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
       // vim風: a(append)で疑問点の追加欄へ、cで確認文コピー
       a: () => enterInsert(questionInputRef.current),
       c: () => void copyRef.current?.(),
+      d: del.press,
     }),
-    [leave, enterInsert],
+    [leave, enterInsert, del.press],
   )
   useShortcuts(shortcuts)
 
@@ -230,7 +243,7 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
   }
   copyRef.current = copyQuestions
 
-  // Enter=次の箱 / Shift+Enter=改行 / Ctrl+Enter=保存。
+  // Shift+Enter=次の箱 / Enter=改行(1行の箱では次の箱) / Ctrl+Enter=保存。
   // 疑問点の追加欄だけは欄側がEnterを持っている(そちらが優先される)
   const onFieldEnter = useFieldChain()
 
@@ -442,26 +455,13 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
         <span className="text-xs text-neutral-400">
           作成 {formatDateTime(task.createdAt)} / 更新 {formatDateTime(task.updatedAt)}
         </span>
-        {confirmDelete ? (
-          <span className="flex items-center gap-2">
-            <span className="text-xs text-neutral-600">削除する?(メモは残ります)</span>
-            <button
-              type="button"
-              className="btn-danger"
-              onClick={() => void run(() => removeTask(task.id)).then((ok) => ok && onDeleted())}
-            >
-              削除する
-            </button>
-            <button type="button" className="btn-ghost" onClick={() => setConfirmDelete(false)}>
-              やめる
-            </button>
-          </span>
-        ) : (
-          <button type="button" className="btn-danger" onClick={() => setConfirmDelete(true)}>
-            削除
-          </button>
-        )}
+        {/* 確認は画面下に固定で出る(DeletePrompt)。ここは入口だけ */}
+        <button type="button" className="btn-danger" onClick={del.press}>
+          削除 <kbd>d</kbd>
+        </button>
       </div>
+
+      <DeletePrompt {...del} />
     </div>
   )
 }

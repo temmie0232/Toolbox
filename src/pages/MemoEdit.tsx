@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { DeletePrompt } from '../components/DeletePrompt'
 import { Field } from '../components/Field'
 import { ImageStrip, ImageViewer } from '../components/MemoImages'
 import { TextArea, TextBox } from '../components/TextBox'
 import { formatDateTime } from '../lib/date'
-import { deleteImages, usePasteImage } from '../lib/memoImages'
+import { deleteImages, memoImageFiles, usePasteImage } from '../lib/memoImages'
+import { memoSummary } from '../lib/memoSummary'
 import { useInitialMode } from '../lib/mode'
+import { useDeleteCommand } from '../lib/useDeleteCommand'
 import { useFieldChain } from '../lib/useFieldChain'
 import {
   useDiscardGuard,
@@ -29,6 +32,9 @@ const TYPE_KEYS: { type: MemoType; key: string }[] = [
   { type: 'conclusion', key: '2' },
   { type: 'free', key: '3' },
 ]
+
+/** 新規メモの初期テンプレ。書き出しは型に嵌めず自由から始める */
+const DEFAULT_TYPE: MemoType = 'free'
 
 function emptyReasons(): string[] {
   return Array.from({ length: REASON_COUNT }, () => '')
@@ -80,7 +86,7 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
   const isEdit = Boolean(memo)
   // 新規は打ちに来た画面。既存は読みに来ることもあるので移動から始める
   useInitialMode(isEdit ? 'normal' : 'insert')
-  const [type, setType] = useState<MemoType>(memo?.type ?? 'soraamekasa')
+  const [type, setType] = useState<MemoType>(memo?.type ?? DEFAULT_TYPE)
   const [taskId, setTaskId] = useState(memo?.taskId ?? initialTaskId)
   const [fact, setFact] = useState(memo?.fact ?? '')
   const [interpretation, setInterpretation] = useState(memo?.interpretation ?? '')
@@ -90,7 +96,6 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
   const [body, setBody] = useState(memo?.body ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [confirmDelete, setConfirmDelete] = useState(false)
   // 拡大表示している画像。開いている間はこの画面のキーを止める(Escは拡大側が取る)
   const [viewing, setViewing] = useState<string | null>(null)
   // この画面で貼った画像。新規を保存せずに取り消したら、誰も参照しないので消す
@@ -99,12 +104,12 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
     pastedRef.current = [...pastedRef.current, fileName]
   }, [])
   const onPasteImage = usePasteImage(setError, notePasted)
-  // Enter=次の箱 / Shift+Enter=改行 / Ctrl+Enter=保存
+  // Shift+Enter=次の箱 / Enter=改行(1行の箱では次の箱) / Ctrl+Enter=保存
   const onFieldEnter = useFieldChain()
 
   const savedReasons = useMemo(() => toReasons(memo?.reasons), [memo?.reasons])
   const dirty =
-    type !== (memo?.type ?? 'soraamekasa') ||
+    type !== (memo?.type ?? DEFAULT_TYPE) ||
     taskId !== (memo?.taskId ?? initialTaskId) ||
     fact !== (memo?.fact ?? '') ||
     interpretation !== (memo?.interpretation ?? '') ||
@@ -239,12 +244,32 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
 
   const { armed, onEscape, disarm } = useDiscardGuard(dirty, discardNew)
 
+  // d でこのメモを消す(1回目は確認)。まだ保存していない新規には出さない
+  const del = useDeleteCommand({
+    resolve: () =>
+      memo && {
+        id: memo.id,
+        kind: 'メモ',
+        name: memoSummary(memo),
+        note: memoImageFiles(memo).length > 0 ? '貼った画像も消えます' : undefined,
+      },
+    remove: (target) =>
+      removeMemo(target.id)
+        .then(() => navigate('/memos'))
+        .catch((e: unknown) =>
+          setError(`削除できませんでした: ${e instanceof Error ? e.message : String(e)}`),
+        ),
+  })
+
   const shortcuts = useMemo<ShortcutMap>(() => {
     const map: ShortcutMap = { Escape: isEdit ? leaveEdit : onEscape }
     // 既存メモは自動保存なので、hでそのまま戻れる。新規は取消の確認を挟む
-    if (isEdit) map.h = leaveEdit
+    if (isEdit) {
+      map.h = leaveEdit
+      map.d = del.press
+    }
     return map
-  }, [isEdit, leaveEdit, onEscape])
+  }, [isEdit, leaveEdit, onEscape, del.press])
   useShortcuts(shortcuts, viewing === null)
 
   // Ctrl+1〜3 でテンプレ切替。本文を書いている最中でも切り替えられる
@@ -371,7 +396,7 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
       )}
 
       {type === 'free' && (
-        <Field label="メモ" hint="改行は Shift+Enter(Enterは次の箱へ)" htmlFor="body">
+        <Field label="メモ" hint="改行は Enter(次の箱へは Shift+Enter)" htmlFor="body">
           <TextArea
             id="body"
             className="box-input"
@@ -439,35 +464,14 @@ function MemoForm({ tasks, memo, initialTaskId = '' }: MemoFormProps) {
           <span className="text-xs text-neutral-400">
             作成 {formatDateTime(memo.createdAt)} / 更新 {formatDateTime(memo.updatedAt)}
           </span>
-          {confirmDelete ? (
-            <span className="flex items-center gap-2">
-              <span className="text-xs text-neutral-600">削除する?</span>
-              <button
-                type="button"
-                className="btn-danger"
-                onClick={() =>
-                  void removeMemo(memo.id)
-                    .then(() => navigate('/memos'))
-                    .catch((e: unknown) =>
-                      setError(
-                        `削除できませんでした: ${e instanceof Error ? e.message : String(e)}`,
-                      ),
-                    )
-                }
-              >
-                削除する
-              </button>
-              <button type="button" className="btn-ghost" onClick={() => setConfirmDelete(false)}>
-                やめる
-              </button>
-            </span>
-          ) : (
-            <button type="button" className="btn-danger" onClick={() => setConfirmDelete(true)}>
-              削除
-            </button>
-          )}
+          {/* 確認は画面下に固定で出る(DeletePrompt)。ここは入口だけ */}
+          <button type="button" className="btn-danger" onClick={del.press}>
+            削除 <kbd>d</kbd>
+          </button>
         </div>
       )}
+
+      <DeletePrompt {...del} />
 
       {viewing && <ImageViewer fileName={viewing} onClose={() => setViewing(null)} />}
     </div>

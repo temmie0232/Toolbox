@@ -7,7 +7,14 @@ import { useMode } from '../lib/mode'
 import { ShortcutSuspendContext, useShortcuts } from '../lib/useShortcuts'
 import { useSpotNav } from '../lib/useSpotNav'
 import { hideWindow, quitApp, setAlwaysOnTop } from '../storage'
-import { flushAllEdits, getSaveError, hasBlockingDraft, retrySave, useStore } from '../store'
+import {
+  createMeeting,
+  flushAllEdits,
+  getSaveError,
+  hasBlockingDraft,
+  retrySave,
+  useStore,
+} from '../store'
 import { HintOverlay } from './HintOverlay'
 import { NavTabs, type NavItem } from './NavTabs'
 import { QuickJump } from './QuickJump'
@@ -30,7 +37,6 @@ const NAV_ITEMS: NavItem[] = [
   { key: 't', upperKey: 'T', path: '/', newPath: '/tasks/new', label: 'タスク', match: (p) => p === '/' || p.startsWith('/tasks') },
   { key: 'm', upperKey: 'M', path: '/memos', newPath: '/memos/new', label: 'メモ', match: (p) => p.startsWith('/memos') },
   { key: 'r', upperKey: 'R', path: '/meetings', newPath: '/meetings/new', label: '議事録', match: (p) => p.startsWith('/meetings') },
-  { key: 's', upperKey: 'S', path: '/brainstorms', newPath: '/brainstorms/new', label: 'ブレスト', match: (p) => p.startsWith('/brainstorms') },
 ]
 
 export function Layout() {
@@ -217,6 +223,45 @@ export function Layout() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [overlay, historyGo])
+
+  /**
+   * Ctrl+E をどこからでも。会議名なしの議事録をその場で作り、着いた先ですぐ録音を始める。
+   * 「会議が始まってから議事録を作る」手間で頭を録り逃すのが一番痛いので、
+   * 名前を聞く画面(/meetings/new)ごと飛ばす。名前は後から詳細画面で足せる(自動保存)。
+   *
+   * 議事録の詳細だけは除く。あちらが自分の Ctrl+E(一時停止・再開)を持っていて、
+   * Layout と画面のリスナーは両方発火するため、ここで避けないと二重に効く
+   */
+  const onMeetingDetail = /^\/meetings\/(?!new$)[^/]+$/.test(location.pathname)
+  const startingMeetingRef = useRef(false)
+  useEffect(() => {
+    if (overlay || onMeetingDetail) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || e.altKey || e.shiftKey || e.metaKey) return
+      if (e.key.toLowerCase() !== 'e') return
+      e.preventDefault()
+      // 書きかけの新規作成を黙って捨てない。他の画面切替キーと同じ扱い
+      if (hasBlockingDraft()) {
+        setBlocked(true)
+        return
+      }
+      // 連打で空の議事録が積み上がらないようにする
+      if (startingMeetingRef.current) return
+      startingMeetingRef.current = true
+      void createMeeting({ title: '', participants: '' })
+        .then((meeting) => {
+          setHelpOpen(false)
+          // 着いた先で録音を始めさせる。ここで start は呼べない(録音機は詳細画面が持つ)
+          navigate(`/meetings/${meeting.id}`, { state: { autoRecord: true } })
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          startingMeetingRef.current = false
+        })
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [overlay, onMeetingDetail, navigate])
 
   /**
    * j/k で画面の押せるものを一列に回る。全画面で共通なので、ここで1回だけ持つ。

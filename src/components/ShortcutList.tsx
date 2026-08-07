@@ -32,6 +32,7 @@ export const SHORTCUT_GROUPS: Group[] = [
       { keys: ['Tab'], label: '細かいもの含めて次へ(札でも届く)' },
       { keys: ['Space'], label: 'チェックの入 / 切' },
       { keys: ['o'], label: 'その画面の新規作成(一覧で)' },
+      { keys: ['d', 'd'], label: '削除(一覧は乗っている行 / 詳細はその1件)。1回目は確認' },
     ],
   },
   {
@@ -40,6 +41,7 @@ export const SHORTCUT_GROUPS: Group[] = [
       { keys: ['x'], label: '乗っている行を完了 ⇄ 作業中' },
       { keys: ['Ctrl', '1〜4'], label: '乗っている行のステータス' },
       { keys: ['Enter'], label: '行を開く' },
+      { keys: ['d', 'd'], label: '乗っている行を削除(続けて消せる)' },
     ],
   },
   {
@@ -48,7 +50,6 @@ export const SHORTCUT_GROUPS: Group[] = [
       { keys: ['t', 'Shift', 'T'], label: 'タスク' },
       { keys: ['m', 'Shift', 'M'], label: 'メモ' },
       { keys: ['r', 'Shift', 'R'], label: '議事録' },
-      { keys: ['s', 'Shift', 'S'], label: 'ブレスト' },
       { keys: [','], label: '設定と行き来する' },
     ],
   },
@@ -56,8 +57,8 @@ export const SHORTCUT_GROUPS: Group[] = [
     title: '入力中(-- 入力 --)でも効くもの',
     items: [
       { keys: ['Ctrl', 'Enter'], label: '即保存(編集画面は自動保存)' },
-      { keys: ['Enter'], label: '次の箱へ(メモ・タスク。議事録は行の確定)' },
-      { keys: ['Shift', 'Enter'], label: '改行' },
+      { keys: ['Shift', 'Enter'], label: '次の箱へ(メモ・タスク)' },
+      { keys: ['Enter'], label: '改行。1行の箱では次の箱へ(議事録は行の確定)' },
       { keys: ['Ctrl', '1〜4'], label: 'ステータス(タスク詳細)' },
       { keys: ['Ctrl', '1〜3'], label: 'テンプレ(メモ) / 種別(議事録)' },
       { keys: ['Ctrl', 'V'], label: 'スクリーンショットをその行に貼る(メモ)' },
@@ -70,7 +71,7 @@ export const SHORTCUT_GROUPS: Group[] = [
       { keys: ['a'], label: '追加欄へ入って書き始める' },
       { keys: ['c'], label: '未解決の疑問点を確認用にコピー(タスク詳細)' },
       { keys: ['h'], label: '一覧へ戻る(Escでも可)' },
-      { keys: ['Esc'], label: '打ちかけを消す → もう一度で一覧へ(議事録/ブレスト)' },
+      { keys: ['Esc'], label: '打ちかけを消す → もう一度で一覧へ(議事録)' },
     ],
   },
   {
@@ -84,7 +85,8 @@ export const SHORTCUT_GROUPS: Group[] = [
   {
     title: '議事録の録音',
     items: [
-      { keys: ['Ctrl', 'E'], label: '録音の開始 / 一時停止・再開' },
+      { keys: ['Ctrl', 'E'], label: 'どの画面からでも、議事録を作ってすぐ録音を始める' },
+      { keys: ['Ctrl', 'E'], label: '議事録の中では 一時停止 / 再開' },
       { keys: ['Ctrl', 'Shift', 'E'], label: '録音を終える(確定)' },
       { keys: ['Ctrl', 'Shift', 'M'], label: 'マイクの入 / 切(録音中も可)' },
       { keys: ['Enter'], label: '入力中の行を確定して追加' },

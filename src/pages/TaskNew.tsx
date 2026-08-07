@@ -87,7 +87,7 @@ export function TaskNew() {
   const shortcuts = useMemo(() => ({ Escape: onEscape }), [onEscape])
   useShortcuts(shortcuts)
 
-  // Enter=次の箱 / Shift+Enter=改行 / Ctrl+Enter=保存
+  // Shift+Enter=次の箱 / Enter=改行(1行の箱では次の箱) / Ctrl+Enter=保存
   const onFieldEnter = useFieldChain()
 
   return (
@@ -148,7 +148,7 @@ export function TaskNew() {
 
       <Field
         label="疑問点"
-        hint="1行に1件(改行は Shift+Enter)。あとで1件ずつ解決済みにできる"
+        hint="1行に1件(Enterで改行)。あとで1件ずつ解決済みにできる"
         htmlFor="questions"
       >
         <TextArea

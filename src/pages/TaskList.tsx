@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ConfirmBadge, StatusBadge } from '../components/Badges'
+import { DeletePrompt } from '../components/DeletePrompt'
 import { GuiButton } from '../components/GuiButton'
 import { daysUntil, deadlineLabel } from '../lib/date'
 import { useGuiMode } from '../lib/guiMode'
 import { useInitialMode } from '../lib/mode'
+import { focusedItemId, useDeleteCommand } from '../lib/useDeleteCommand'
 import { useNumberShortcuts, useShortcuts } from '../lib/useShortcuts'
-import { updateTaskWith, useStore } from '../store'
+import { removeTask, updateTaskWith, useStore } from '../store'
 import { TASK_STATUS_ORDER, needsConfirmation, type Task, type TaskStatus } from '../types'
 
 /** 期限順(未定は末尾)。同じ期限なら作成が古い方を上に */
@@ -35,15 +37,8 @@ export function TaskList() {
     return { open, done }
   }, [tasks])
 
-  /**
-   * いま乗っている行のタスクID。
-   * 詳細を開いてステータスを変えて戻る往復が一番の無駄なので、一覧から直に触れるようにする。
-   */
-  const focusedTaskId = useCallback((): string | undefined => {
-    const el = document.activeElement
-    if (!(el instanceof HTMLElement)) return undefined
-    return el.closest('[data-task-id]')?.getAttribute('data-task-id') ?? undefined
-  }, [])
+  // 乗っている行(`data-item-id`)を直に触る。
+  // 詳細を開いて変えて戻る往復が一番の無駄なので、一覧から済ませられるようにする
 
   // 書き込みの失敗は store が拾って上部のバナーに出す。ここで握り潰しても黙りはしない
   const write = (work: Promise<void>) => void work.catch(() => undefined)
@@ -65,22 +60,39 @@ export function TaskList() {
 
   const setStatus = useCallback(
     (next: TaskStatus) => {
-      const id = focusedTaskId()
+      const id = focusedItemId()
       if (id) applyStatus(id, next)
     },
-    [focusedTaskId, applyStatus],
+    [applyStatus],
   )
+
+  // d で乗っている行を消す(1回目は確認)
+  const del = useDeleteCommand({
+    resolve: () => {
+      const task = tasks.find((t) => t.id === focusedItemId())
+      if (!task) return undefined
+      return {
+        id: task.id,
+        kind: 'タスク',
+        name: task.title || '(無題)',
+        note: '紐付いたメモは残ります',
+      }
+    },
+    remove: (target) => removeTask(target.id),
+    emptyHint: '消すタスクの行に乗ってから d(j / k で乗る)',
+  })
 
   const shortcuts = useMemo(
     () => ({
       o: openNew,
       // x: 完了 ⇄ 作業中 の行き来。一覧で片付ける動作は連打になるので1キーにする
       x: () => {
-        const id = focusedTaskId()
+        const id = focusedItemId()
         if (id) toggleDone(id)
       },
+      d: del.press,
     }),
-    [openNew, focusedTaskId, toggleDone],
+    [openNew, toggleDone, del.press],
   )
   useShortcuts(shortcuts)
 
@@ -97,7 +109,7 @@ export function TaskList() {
     const id = sessionStorage.getItem('tool:lastTaskId')
     if (!id) return
     sessionStorage.removeItem('tool:lastTaskId')
-    const row = document.querySelector<HTMLAnchorElement>(`a[data-task-id="${id}"]`)
+    const row = document.querySelector<HTMLAnchorElement>(`a[data-item-id="${id}"]`)
     if (!row) return
     // 完了セクションの中にいるなら、開いてからフォーカスする
     if (row.offsetParent === null) {
@@ -158,6 +170,8 @@ export function TaskList() {
           </ul>
         </details>
       )}
+
+      <DeletePrompt {...del} />
     </div>
   )
 }
@@ -193,7 +207,7 @@ function TaskRow({ task, gui, onToggleDone, onCycleStatus }: TaskRowProps) {
     <li className="flex items-center">
       <Link
         to={`/tasks/${task.id}`}
-        data-task-id={task.id}
+        data-item-id={task.id}
         onClick={() => sessionStorage.setItem('tool:lastTaskId', task.id)}
         className="flex flex-1 items-center gap-3 px-1 py-2.5 hover:bg-neutral-50"
       >

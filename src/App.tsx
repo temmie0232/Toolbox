@@ -3,9 +3,6 @@ import { useEffect } from 'react'
 import { Route, HashRouter as Router, Routes } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { ModeProvider } from './lib/mode'
-import { BrainstormDetail } from './pages/BrainstormDetail'
-import { BrainstormList } from './pages/BrainstormList'
-import { BrainstormNew } from './pages/BrainstormNew'
 import { MeetingDetail } from './pages/MeetingDetail'
 import { MeetingList } from './pages/MeetingList'
 import { MeetingNew } from './pages/MeetingNew'
@@ -74,9 +71,6 @@ export function App() {
             <Route path="meetings" element={<MeetingList />} />
             <Route path="meetings/new" element={<MeetingNew />} />
             <Route path="meetings/:id" element={<MeetingDetail />} />
-            <Route path="brainstorms" element={<BrainstormList />} />
-            <Route path="brainstorms/new" element={<BrainstormNew />} />
-            <Route path="brainstorms/:id" element={<BrainstormDetail />} />
             <Route path="settings" element={<Settings />} />
             <Route path="*" element={<TaskList />} />
           </Route>

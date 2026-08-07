@@ -11,7 +11,7 @@ import { clearAllData, markBackedUp, replaceAllData, useStore } from '../store'
 type Notice = { kind: 'ok' | 'error'; text: string } | null
 
 export function Settings() {
-  const { tasks, memos, meetings, brainstorms, lastBackupAt } = useStore()
+  const { tasks, memos, meetings, lastBackupAt } = useStore()
   const gui = useGuiMode()
   useInitialMode('normal')
   const [notice, setNotice] = useState<Notice>(null)
@@ -46,7 +46,7 @@ export function Settings() {
 
   const onExport = async () => {
     try {
-      const saved = await exportBackup(tasks, memos, meetings, brainstorms)
+      const saved = await exportBackup(tasks, memos, meetings)
       if (saved) {
         await markBackedUp()
         setNotice({ kind: 'ok', text: `書き出しました: ${saved}` })
@@ -60,7 +60,7 @@ export function Settings() {
     try {
       const picked = await pickBackup()
       if (!picked) return
-      await replaceAllData(picked.tasks, picked.memos, picked.meetings, picked.brainstorms)
+      await replaceAllData(picked.tasks, picked.memos, picked.meetings)
       // 読み込めた = そのファイルが手元にある = バックアップ済みとみなす
       await markBackedUp()
       setNotice({
@@ -131,8 +131,7 @@ export function Settings() {
         <div className="space-y-1 rounded-lg border border-neutral-200 px-4 py-3 text-sm text-neutral-700">
           <p>
             タスク <strong>{tasks.length}</strong> 件 / メモ <strong>{memos.length}</strong> 件 /
-            議事録 <strong>{meetings.length}</strong> 件 / ブレスト{' '}
-            <strong>{brainstorms.length}</strong> 件
+            議事録 <strong>{meetings.length}</strong> 件
           </p>
           <p className="text-xs text-neutral-500">
             最終バックアップ:{' '}
@@ -148,7 +147,7 @@ export function Settings() {
       <section className="space-y-2">
         <h2 className="text-sm font-semibold text-neutral-900">バックアップ</h2>
         <p className="text-xs text-neutral-500">
-          タスク・メモ・議事録・ブレストを1つのJSONファイルとして保存します。復元手段はこのファイルだけです。
+          タスク・メモ・議事録を1つのJSONファイルとして保存します。復元手段はこのファイルだけです。
           <br />
           <strong>録音した音声と、メモに貼った画像はJSONに含まれません。</strong>
           必要なら「保存先のフォルダを開く」から recordings / images フォルダごとコピーしてください。

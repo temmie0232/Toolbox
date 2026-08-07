@@ -1,12 +1,15 @@
 import { useCallback, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { DeletePrompt } from '../components/DeletePrompt'
 import { GuiButton } from '../components/GuiButton'
 import { formatDateTime } from '../lib/date'
 import { useGuiMode } from '../lib/guiMode'
+import { memoImageFiles } from '../lib/memoImages'
 import { memoSummary } from '../lib/memoSummary'
 import { useInitialMode } from '../lib/mode'
+import { focusedItemId, useDeleteCommand } from '../lib/useDeleteCommand'
 import { useShortcuts } from '../lib/useShortcuts'
-import { useStore } from '../store'
+import { removeMemo, useStore } from '../store'
 import { MEMO_TYPE_LABEL } from '../types'
 
 export function MemoList() {
@@ -25,7 +28,24 @@ export function MemoList() {
   }, [tasks])
 
   const openNew = useCallback(() => navigate('/memos/new'), [navigate])
-  const shortcuts = useMemo(() => ({ o: openNew }), [openNew])
+
+  // d で乗っている行を消す(1回目は確認)
+  const del = useDeleteCommand({
+    resolve: () => {
+      const memo = memos.find((m) => m.id === focusedItemId())
+      if (!memo) return undefined
+      return {
+        id: memo.id,
+        kind: 'メモ',
+        name: memoSummary(memo),
+        note: memoImageFiles(memo).length > 0 ? '貼った画像も消えます' : undefined,
+      }
+    },
+    remove: (target) => removeMemo(target.id),
+    emptyHint: '消すメモの行に乗ってから d(j / k で乗る)',
+  })
+
+  const shortcuts = useMemo(() => ({ o: openNew, d: del.press }), [openNew, del.press])
   useShortcuts(shortcuts)
 
   return (
@@ -53,6 +73,7 @@ export function MemoList() {
             <li key={memo.id}>
               <Link
                 to={`/memos/${memo.id}`}
+                data-item-id={memo.id}
                 className="flex items-center gap-3 px-1 py-2.5 hover:bg-neutral-50"
               >
                 <span className="w-24 shrink-0 text-xs text-neutral-500">
@@ -74,6 +95,8 @@ export function MemoList() {
           ))}
         </ul>
       )}
+
+      <DeletePrompt {...del} />
     </div>
   )
 }

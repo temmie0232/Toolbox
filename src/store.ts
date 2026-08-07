@@ -4,8 +4,6 @@ import { deleteImages, memoImageFiles } from './lib/memoImages'
 import { deleteRecording, loadData, saveData } from './storage'
 import {
   EMPTY_SUBMIT_CHECK,
-  type BrainCard,
-  type Brainstorm,
   type Meeting,
   type Memo,
   type MinuteBlock,
@@ -21,7 +19,6 @@ export interface StoreState {
   tasks: Task[]
   memos: Memo[]
   meetings: Meeting[]
-  brainstorms: Brainstorm[]
   /** 最後にJSONバックアップを書き出した日時。長く空くと印を出す */
   lastBackupAt?: string
 }
@@ -31,7 +28,6 @@ let state: StoreState = {
   tasks: [],
   memos: [],
   meetings: [],
-  brainstorms: [],
 }
 const listeners = new Set<() => void>()
 
@@ -60,7 +56,7 @@ let saveChain: Promise<unknown> = Promise.resolve()
 function queueSave(): Promise<void> {
   // 実行時点の最新stateを書くので、連続操作は自然にまとめられる
   const run = saveChain.then(() =>
-    saveData(state.tasks, state.memos, state.meetings, state.brainstorms, state.lastBackupAt),
+    saveData(state.tasks, state.memos, state.meetings, state.lastBackupAt),
   )
   // 失敗は画面のどこにいても見えるように、グローバルに記録する
   // (自動保存化により、画面遷移後に失敗が返ってくることがあるため)
@@ -88,7 +84,6 @@ type Draft = {
   tasks: Task[]
   memos: Memo[]
   meetings: Meeting[]
-  brainstorms: Brainstorm[]
 }
 
 /**
@@ -100,13 +95,11 @@ async function commit(update: (draft: Draft) => Partial<Draft>): Promise<void> {
     tasks: state.tasks,
     memos: state.memos,
     meetings: state.meetings,
-    brainstorms: state.brainstorms,
   })
   set({
     tasks: next.tasks ?? state.tasks,
     memos: next.memos ?? state.memos,
     meetings: next.meetings ?? state.meetings,
-    brainstorms: next.brainstorms ?? state.brainstorms,
   })
   await queueSave()
 }
@@ -128,7 +121,6 @@ export async function reload(): Promise<void> {
       tasks: data.tasks,
       memos: data.memos,
       meetings: data.meetings,
-      brainstorms: data.brainstorms,
       lastBackupAt: data.lastBackupAt,
     })
   } catch (e) {
@@ -356,103 +348,18 @@ async function convertTodoToTaskInner(meeting: Meeting, block: MinuteBlock): Pro
   return task
 }
 
-// ---- ブレスト ----
-
-export function createBrainstorm(input: {
-  theme: string
-  limitMinutes: number
-}): Promise<Brainstorm> {
-  const timestamp = now()
-  const brainstorm: Brainstorm = {
-    id: newId(),
-    theme: input.theme.trim(),
-    limitMinutes: input.limitMinutes,
-    cards: [],
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  }
-  return commit(({ brainstorms }) => ({ brainstorms: [...brainstorms, brainstorm] })).then(
-    () => brainstorm,
-  )
-}
-
-export function updateBrainstormWith(
-  id: string,
-  makePatch: (brainstorm: Brainstorm) => Partial<Omit<Brainstorm, 'id' | 'createdAt'>>,
-): Promise<void> {
-  return commit(({ brainstorms }) => {
-    const current = brainstorms.find((b) => b.id === id)
-    if (!current) return {}
-    const next: Brainstorm = { ...current, ...makePatch(current), updatedAt: now() }
-    return { brainstorms: brainstorms.map((b) => (b.id === id ? next : b)) }
-  })
-}
-
-export function addBrainCard(brainstormId: string, text: string): Promise<void> {
-  const card: BrainCard = { id: newId(), text: text.trim(), createdAt: now() }
-  return updateBrainstormWith(brainstormId, (b) => ({ cards: [...b.cards, card] }))
-}
-
-export function updateBrainCard(
-  brainstormId: string,
-  cardId: string,
-  patch: Partial<Omit<BrainCard, 'id' | 'createdAt'>>,
-): Promise<void> {
-  return updateBrainstormWith(brainstormId, (b) => ({
-    cards: b.cards.map((c) => (c.id === cardId ? { ...c, ...patch } : c)),
-  }))
-}
-
-export function removeBrainCard(brainstormId: string, cardId: string): Promise<void> {
-  return updateBrainstormWith(brainstormId, (b) => ({
-    cards: b.cards.filter((c) => c.id !== cardId),
-  }))
-}
-
-export function removeBrainstorm(id: string): Promise<void> {
-  return commit(({ brainstorms }) => ({ brainstorms: brainstorms.filter((b) => b.id !== id) }))
-}
-
-/** 出したカードのまとまりを、そのままメモとして残す */
-export async function brainGroupToMemo(
-  brainstormId: string,
-  group: string,
-  taskId?: string,
-): Promise<Memo | null> {
-  const brainstorm = state.brainstorms.find((b) => b.id === brainstormId)
-  if (!brainstorm) return null
-  const cards = brainstorm.cards.filter((c) => (c.group ?? '') === group)
-  if (cards.length === 0) return null
-  // 連打で同じ内容のメモが増えないようにする
-  const key = `${brainstormId}:${group}`
-  if (inFlight.has(key)) return null
-  inFlight.add(key)
-  try {
-    return await createMemo({
-      type: 'free',
-      taskId,
-      body: [`【${group || '未分類'}】${brainstorm.theme}`, ...cards.map((c) => `・${c.text}`)].join(
-        '\n',
-      ),
-    })
-  } finally {
-    inFlight.delete(key)
-  }
-}
-
 // ---- バックアップ(F5)----
 
 export function replaceAllData(
   tasks: Task[],
   memos: Memo[],
   meetings: Meeting[],
-  brainstorms: Brainstorm[],
 ): Promise<void> {
-  return commit(() => ({ tasks, memos, meetings, brainstorms }))
+  return commit(() => ({ tasks, memos, meetings }))
 }
 
 export function clearAllData(): Promise<void> {
-  return commit(() => ({ tasks: [], memos: [], meetings: [], brainstorms: [] }))
+  return commit(() => ({ tasks: [], memos: [], meetings: [] }))
 }
 
 /** バックアップを書き出した(または読み込んだ)ことを記録する */

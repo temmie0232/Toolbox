@@ -132,30 +132,6 @@ export interface Meeting {
   updatedAt: string
 }
 
-/**
- * ブレスト。批判を止めて量を出すための箱。
- * 出し切ってからKJ法でグループにまとめる、という順序を画面で強制する。
- */
-export interface BrainCard {
-  id: string
-  text: string
-  /** まとめたグループ名。未分類は undefined */
-  group?: string
-  createdAt: string
-}
-
-export interface Brainstorm {
-  id: string
-  theme: string
-  /** 制限時間(分) */
-  limitMinutes: number
-  /** 計測を始めた時刻。押すまでは undefined */
-  startedAt?: string
-  cards: BrainCard[]
-  createdAt: string
-  updatedAt: string
-}
-
 /** JSON書き出し/読み込み(F5)の形式 */
 export interface BackupFile {
   app: 'tool'
@@ -165,7 +141,6 @@ export interface BackupFile {
   memos: Memo[]
   /** v0.1のバックアップには無い */
   meetings?: Meeting[]
-  brainstorms?: Brainstorm[]
 }
 
 export const EMPTY_SUBMIT_CHECK: SubmitCheck = {
