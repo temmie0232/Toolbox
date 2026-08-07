@@ -3,7 +3,7 @@ import { deadlineLabel, formatDateTime } from '../lib/date'
 import { memoSummary } from '../lib/memoSummary'
 import { useEscapeOwner } from '../lib/mode'
 import { useStore } from '../store'
-import { MEMO_TYPE_LABEL, TASK_STATUS_LABEL, needsConfirmation } from '../types'
+import { CONCEPT_STATUS_LABEL, MEMO_TYPE_LABEL, TASK_STATUS_LABEL, needsConfirmation } from '../types'
 
 const LIMIT = 12
 
@@ -51,7 +51,7 @@ interface QuickJumpProps {
 }
 
 export function QuickJump({ onPick, onClose }: QuickJumpProps) {
-  const { tasks, memos, meetings } = useStore()
+  const { tasks, memos, meetings, concepts } = useStore()
   const [query, setQuery] = useState('')
   const [index, setIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -101,8 +101,19 @@ export function QuickJump({ onPick, onClose }: QuickJumpProps) {
         flag: openTodos > 0 ? `TODO ${openTodos}` : undefined,
       })
     }
+    for (const c of concepts) {
+      list.push({
+        key: `concept-${c.id}`,
+        kind: '概念',
+        title: c.name || '(無名)',
+        sub: CONCEPT_STATUS_LABEL[c.status],
+        path: `/concepts/${c.id}`,
+        at: c.updatedAt,
+        flag: c.status !== 'explainable' ? '未理解' : undefined,
+      })
+    }
     return list.sort((a, b) => (a.at > b.at ? -1 : 1))
-  }, [tasks, memos, meetings])
+  }, [tasks, memos, meetings, concepts])
 
   const hits = useMemo<Entry[]>(() => {
     const q = query.trim().toLowerCase()

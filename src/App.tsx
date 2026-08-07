@@ -3,6 +3,8 @@ import { useEffect } from 'react'
 import { Route, HashRouter as Router, Routes } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { ModeProvider } from './lib/mode'
+import { ConceptDetail } from './pages/ConceptDetail'
+import { ConceptList } from './pages/ConceptList'
 import { MeetingDetail } from './pages/MeetingDetail'
 import { MeetingList } from './pages/MeetingList'
 import { MeetingNew } from './pages/MeetingNew'
@@ -74,6 +76,8 @@ export function App() {
             <Route path="meetings" element={<MeetingList />} />
             <Route path="meetings/new" element={<MeetingNew />} />
             <Route path="meetings/:id" element={<MeetingDetail />} />
+            <Route path="concepts" element={<ConceptList />} />
+            <Route path="concepts/:id" element={<ConceptDetail />} />
             <Route path="settings" element={<Settings />} />
             <Route path="*" element={<TaskList />} />
           </Route>

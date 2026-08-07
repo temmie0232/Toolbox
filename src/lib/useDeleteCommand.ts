@@ -172,7 +172,11 @@ function focusRestorer(): (() => void) | null {
 }
 
 function listRows(): HTMLElement[] {
-  return Array.from(document.querySelectorAll<HTMLElement>('[data-item-id]'))
+  // 閉じた畳み(完了タスク・説明できる概念)の中の行は数えない。
+  // 見えない行を復帰先に選ぶと focus が無言で失敗し、連続の dd が途切れる
+  return Array.from(document.querySelectorAll<HTMLElement>('[data-item-id]')).filter(
+    (el) => el.getClientRects().length > 0,
+  )
 }
 
 /**

@@ -90,6 +90,59 @@ export interface Task {
   updatedAt: string
 }
 
+/**
+ * 概念の理解度。チェックボックスの自己申告にすると「わかった気」で錯覚するので、
+ * 「説明できる」へは自分の言葉の説明(explanation)が書けているときだけ上げられる。
+ * その判定は canExplain が持つ。
+ */
+export type ConceptStatus = 'captured' | 'fuzzy' | 'explainable'
+
+export const CONCEPT_STATUS_LABEL: Record<ConceptStatus, string> = {
+  captured: '未着手',
+  fuzzy: 'ふわっと',
+  explainable: '説明できる',
+}
+
+export const CONCEPT_STATUS_ORDER: ConceptStatus[] = ['captured', 'fuzzy', 'explainable']
+
+/**
+ * わからない概念1つ分の受信箱。AI駆動で成果物だけが先に進み、
+ * 「知らないものの塊」が積み上がる(理解負債)のを、まず見える化して止める。
+ * 作業中は名前だけ放り込み、すきま時間に説明の箱を自分の言葉で埋める。
+ */
+export interface Concept {
+  id: string
+  /** 概念の名前。例: 総合テスト */
+  name: string
+  /** 出どころ。どのタスクで出てきたか(任意) */
+  taskId?: string
+  /** 30秒説明。上司に「これ何?」と聞かれたときに言う1行 */
+  briefing: string
+  /** 自分の言葉での説明。ここが埋まらない = まだ理解していない(Feynman法) */
+  explanation: string
+  /** まだ分からない点。次にAIに聞くことリストになる */
+  gaps: string
+  status: ConceptStatus
+  createdAt: string
+  updatedAt: string
+}
+
+/** 「説明できる」に上げてよいか。自分の言葉の説明が書けているかで判定する */
+export function canExplain(concept: Pick<Concept, 'explanation'>): boolean {
+  return concept.explanation.trim().length > 0
+}
+
+/**
+ * タスクに紐付いた、まだ説明できない概念。報告前の死角として見せる。
+ * status だけでなく説明の中身も見る — 「説明できる」に上げたあと説明を消した概念を、
+ * 一番危ないやつとして取りこぼさないため
+ */
+export function unexplainedConcepts(concepts: Concept[], taskId: string): Concept[] {
+  return concepts.filter(
+    (c) => c.taskId === taskId && (c.status !== 'explainable' || !canExplain(c)),
+  )
+}
+
 export type MemoType = 'soraamekasa' | 'conclusion' | 'free'
 
 export const MEMO_TYPE_LABEL: Record<MemoType, string> = {
@@ -184,6 +237,8 @@ export interface BackupFile {
   memos: Memo[]
   /** v0.1のバックアップには無い */
   meetings?: Meeting[]
+  /** 概念より前のバックアップには無い */
+  concepts?: Concept[]
 }
 
 export const EMPTY_SUBMIT_CHECK: SubmitCheck = {

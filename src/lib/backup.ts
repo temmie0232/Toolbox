@@ -1,9 +1,12 @@
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { readTextFile, writeTextFile } from '../storage'
 import {
+  CONCEPT_STATUS_ORDER,
   MINUTE_KIND_ORDER,
   TASK_STATUS_ORDER,
   type BackupFile,
+  type Concept,
+  type ConceptStatus,
   type Meeting,
   type Memo,
   type MemoType,
@@ -25,6 +28,7 @@ export async function exportBackup(
   tasks: Task[],
   memos: Memo[],
   meetings: Meeting[],
+  concepts: Concept[],
 ): Promise<string | null> {
   const path = await save({
     title: 'バックアップの保存先',
@@ -39,6 +43,7 @@ export async function exportBackup(
     tasks,
     memos,
     meetings,
+    concepts,
   }
   await writeTextFile(path, JSON.stringify(data, null, 2))
   return path
@@ -49,6 +54,7 @@ export interface PickedBackup {
   tasks: Task[]
   memos: Memo[]
   meetings: Meeting[]
+  concepts: Concept[]
 }
 
 /** 開くダイアログを出してJSONを読む。キャンセルされたら null */
@@ -86,6 +92,10 @@ function isMinuteKind(value: unknown): value is MinuteKind {
   return typeof value === 'string' && (MINUTE_KIND_ORDER as string[]).includes(value)
 }
 
+function isConceptStatus(value: unknown): value is ConceptStatus {
+  return typeof value === 'string' && (CONCEPT_STATUS_ORDER as string[]).includes(value)
+}
+
 function optionalStr(value: unknown): string | undefined {
   return typeof value === 'string' && value ? value : undefined
 }
@@ -98,6 +108,7 @@ export function parseBackup(text: string): {
   tasks: Task[]
   memos: Memo[]
   meetings: Meeting[]
+  concepts: Concept[]
 } {
   let raw: unknown
   try {
@@ -229,6 +240,30 @@ export function parseBackup(text: string): {
     }
   })
 
+  // 概念は後から足した項目なので、無いバックアップも受け付ける
+  const rawConcepts = Array.isArray(data.concepts) ? data.concepts : []
+  const concepts: Concept[] = rawConcepts.map((item, index) => {
+    const c = item as Partial<Concept>
+    if (typeof c.id !== 'string') {
+      throw new BackupParseError(`${index + 1}件目の概念にidがありません`)
+    }
+    const explanation = str(c.explanation)
+    const status = isConceptStatus(c.status) ? c.status : 'captured'
+    return {
+      id: c.id,
+      name: str(c.name, '(無名)'),
+      // 存在しないタスクへの紐付けは落とす
+      taskId: typeof c.taskId === 'string' && taskIds.has(c.taskId) ? c.taskId : undefined,
+      briefing: str(c.briefing),
+      explanation,
+      gaps: str(c.gaps),
+      // 説明が無いのに「説明できる」は名乗らせない(手で書き換えられた値も届きうる)
+      status: status === 'explainable' && !explanation.trim() ? 'fuzzy' : status,
+      createdAt: str(c.createdAt, new Date().toISOString()),
+      updatedAt: str(c.updatedAt, str(c.createdAt, new Date().toISOString())),
+    }
+  })
+
   // ブレストは廃止した。古いバックアップに brainstorms が入っていても読み飛ばす
-  return { tasks, memos, meetings }
+  return { tasks, memos, meetings, concepts }
 }

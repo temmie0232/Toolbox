@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ConfirmBadge } from '../components/Badges'
+import { ConceptStatusChip, ConfirmBadge } from '../components/Badges'
 import { DeadlinePick } from '../components/DeadlinePick'
 import { DeletePrompt } from '../components/DeletePrompt'
 import { Field } from '../components/Field'
@@ -13,7 +13,7 @@ import { useInitialMode, useModeActions } from '../lib/mode'
 import { useDeleteCommand } from '../lib/useDeleteCommand'
 import { useFieldChain } from '../lib/useFieldChain'
 import { useNumberShortcuts, useSaveShortcut, useShortcuts } from '../lib/useShortcuts'
-import { registerFlush, removeTask, updateTaskWith, useStore } from '../store'
+import { createConcept, registerFlush, removeTask, updateTaskWith, useStore } from '../store'
 import {
   MEMO_TYPE_LABEL,
   REPORT_KIND_LABEL,
@@ -21,6 +21,7 @@ import {
   TASK_STATUS_ORDER,
   needsConfirmation,
   reportSummary,
+  type Concept,
   type Memo,
   type SubmitCheck,
   type Task,
@@ -36,7 +37,7 @@ const SUBMIT_QUESTIONS: { key: keyof SubmitCheck; label: string }[] = [
 export function TaskDetail() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
-  const { status, tasks, memos } = useStore()
+  const { status, tasks, memos, concepts } = useStore()
   const task = tasks.find((t) => t.id === id)
   const onDeleted = useCallback(() => navigate('/'), [navigate])
 
@@ -57,6 +58,7 @@ export function TaskDetail() {
       key={task.id}
       task={task}
       linkedMemos={memos.filter((m) => m.taskId === task.id)}
+      linkedConcepts={concepts.filter((c) => c.taskId === task.id)}
       onDeleted={onDeleted}
     />
   )
@@ -65,10 +67,11 @@ export function TaskDetail() {
 interface BodyProps {
   task: Task
   linkedMemos: Memo[]
+  linkedConcepts: Concept[]
   onDeleted: () => void
 }
 
-function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
+function TaskDetailBody({ task, linkedMemos, linkedConcepts, onDeleted }: BodyProps) {
   const navigate = useNavigate()
   const { enterInsert } = useModeActions()
   // 見に来る画面。書きたくなったら i か Enter で欄に入る
@@ -79,6 +82,7 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
   const [deadline, setDeadline] = useState(task.deadline ?? '')
   const [notes, setNotes] = useState(task.notes ?? '')
   const [newQuestion, setNewQuestion] = useState('')
+  const [newConcept, setNewConcept] = useState('')
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
 
@@ -229,6 +233,15 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
     )
     // 書き込みが通ってから消す。失敗したら打ち直しにならない
     if (ok) setNewQuestion('')
+  }
+
+  const addConcept = async () => {
+    const text = newConcept.trim()
+    if (!text) return
+    const ok = await run(async () => {
+      await createConcept({ name: text, taskId: task.id })
+    })
+    if (ok) setNewConcept('')
   }
 
   const toggleCheck = (key: keyof SubmitCheck) =>
@@ -403,8 +416,15 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
             value={newQuestion}
             onChange={(e) => setNewQuestion(e.target.value)}
             onKeyDown={(e) => {
-              // 変換確定のEnterで登録してしまわないようにする
-              if (e.key === 'Enter' && !e.nativeEvent.isComposing && !e.ctrlKey && !e.metaKey) {
+              // 変換確定のEnterで登録しない。移動モードのEnter(ModeProviderがprevent済み)は
+              // 「書き始める」の操作なので、これも登録に取らない
+              if (
+                e.key === 'Enter' &&
+                !e.defaultPrevented &&
+                !e.nativeEvent.isComposing &&
+                !e.ctrlKey &&
+                !e.metaKey
+              ) {
                 e.preventDefault()
                 void addQuestion()
               }
@@ -416,6 +436,63 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
             追加
           </button>
         </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-neutral-900">
+          分からない概念{' '}
+          <span className="font-normal text-neutral-500">
+            — 説明できないまま出すと「これ何?」で詰む
+          </span>
+        </h2>
+        <ul className="divide-y divide-neutral-100 border-y border-neutral-100">
+          {linkedConcepts.map((concept) => (
+            <li key={concept.id}>
+              <Link
+                to={`/concepts/${concept.id}`}
+                className="flex items-center gap-3 px-1 py-2 hover:bg-neutral-50"
+              >
+                <ConceptStatusChip status={concept.status} />
+                <span
+                  className={`flex-1 truncate text-sm ${
+                    concept.status === 'explainable' ? 'text-neutral-400' : 'text-neutral-800'
+                  }`}
+                >
+                  {concept.name || '(無名)'}
+                </span>
+                <span className="shrink-0 text-xs text-neutral-400">
+                  {formatDateTime(concept.updatedAt)}
+                </span>
+              </Link>
+            </li>
+          ))}
+          {linkedConcepts.length === 0 && (
+            <li className="px-1 py-2 text-sm text-neutral-400">
+              まだありません。知らない言葉が出たら、調べる前にまず放り込む。
+            </li>
+          )}
+        </ul>
+        <TextBox
+          className="box-input"
+          value={newConcept}
+          onChange={(e) => setNewConcept(e.target.value)}
+          onKeyDown={(e) => {
+            // 変換確定のEnterで登録しない。移動モードのEnter(ModeProviderがprevent済み)は
+            // 「書き始める」の操作なので、これも登録に取らない
+            if (
+              e.key === 'Enter' &&
+              !e.defaultPrevented &&
+              !e.nativeEvent.isComposing &&
+              !e.ctrlKey &&
+              !e.metaKey
+            ) {
+              e.preventDefault()
+              void addConcept()
+            }
+          }}
+          placeholder="わからない言葉を放り込む(Enterで追加)"
+          aria-label="このタスクの概念を追加"
+        />
       </section>
 
       <section className="space-y-3">

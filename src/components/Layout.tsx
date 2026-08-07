@@ -37,6 +37,8 @@ const NAV_ITEMS: NavItem[] = [
   { key: 't', upperKey: 'T', path: '/', newPath: '/tasks/new', label: 'タスク', match: (p) => p === '/' || p.startsWith('/tasks') },
   { key: 'm', upperKey: 'M', path: '/memos', newPath: '/memos/new', label: 'メモ', match: (p) => p.startsWith('/memos') },
   { key: 'r', upperKey: 'R', path: '/meetings', newPath: '/meetings/new', label: '議事録', match: (p) => p.startsWith('/meetings') },
+  // 概念に専用の新規画面は無い。一覧の放り込み欄がその代わりなので、大文字はそこへ直行する
+  { key: 'y', upperKey: 'Y', path: '/concepts', newPath: '/concepts?new=1', label: '概念', match: (p) => p.startsWith('/concepts') },
 ]
 
 export function Layout() {

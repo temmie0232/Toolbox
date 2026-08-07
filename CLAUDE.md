@@ -29,7 +29,7 @@ npm run typecheck
 
 ```
 src/
-  types.ts        データモデル(Task / Report / Memo / Meeting)
+  types.ts        データモデル(Task / Report / Memo / Meeting / Concept)
   storage.ts      Rustコマンド越しのファイル入出力
   store.ts        アプリ全体の状態。全ての変更はここを通す
   lib/
@@ -41,7 +41,7 @@ src/
     memoImages    メモに貼った画像。本文の印とファイルの出し入れ
     その他        日付・ID・バックアップ・録音
   components/     Layout(枠) / Field(箱) / TextBox(入力欄) / Badges / ShortcutHelp / MemoImages(貼った画像の帯と拡大) / DeletePrompt(削除の確認)
-  pages/          タスク一覧・受信箱・詳細・報告(上司向けの骨格)、メモ、議事録、設定
+  pages/          タスク一覧・受信箱・詳細・報告(上司向けの骨格)、メモ、議事録、概念(理解負債の受信箱)、設定
 src-tauri/
   src/lib.rs        ファイル入出力、トレイ常駐、グローバルショートカット(Ctrl+Alt+T)
   src/mouse_hook.rs マウスのサイドボタン(戻る/XBUTTON1)での呼び出し。Windows専用、低レベルフックで消費する

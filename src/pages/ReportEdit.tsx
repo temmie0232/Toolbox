@@ -34,6 +34,8 @@ import {
 import {
   REPORT_KIND_LABEL,
   reportSummary,
+  unexplainedConcepts,
+  type Concept,
   type Report,
   type ReportKind,
   type Task,
@@ -59,7 +61,7 @@ function prefillRequests(task: Task): string {
 
 export function ReportNew() {
   const { taskId = '' } = useParams()
-  const { status, tasks } = useStore()
+  const { status, tasks, concepts } = useStore()
   const task = tasks.find((t) => t.id === taskId)
 
   if (status === 'loading') return <p className="text-sm text-neutral-500">読み込み中…</p>
@@ -73,12 +75,12 @@ export function ReportNew() {
       </div>
     )
   }
-  return <ReportForm key={task.id} task={task} />
+  return <ReportForm key={task.id} task={task} unexplained={unexplainedConcepts(concepts, task.id)} />
 }
 
 export function ReportDetail() {
   const { taskId = '', reportId = '' } = useParams()
-  const { status, tasks } = useStore()
+  const { status, tasks, concepts } = useStore()
   const task = tasks.find((t) => t.id === taskId)
   const report = task?.reports?.find((r) => r.id === reportId)
 
@@ -93,19 +95,28 @@ export function ReportDetail() {
       </div>
     )
   }
-  return <ReportForm key={report.id} task={task} report={report} />
+  return (
+    <ReportForm
+      key={report.id}
+      task={task}
+      report={report}
+      unexplained={unexplainedConcepts(concepts, task.id)}
+    />
+  )
 }
 
 interface ReportFormProps {
   task: Task
   report?: Report
+  /** このタスクに紐付いた、まだ説明できない概念。報告前の死角として見せる */
+  unexplained: Concept[]
 }
 
 /**
  * 報告の骨格を埋める画面。白紙から報告文を考えさせない。
  * 箱そのものがチェックリストで、空の箱=まだ考えていない死角として見せる。
  */
-function ReportForm({ task, report }: ReportFormProps) {
+function ReportForm({ task, report, unexplained }: ReportFormProps) {
   const navigate = useNavigate()
   const { enterInsert } = useModeActions()
   const isEdit = Boolean(report)
@@ -370,6 +381,24 @@ function ReportForm({ task, report }: ReportFormProps) {
           )}
         </Field>
       ))}
+
+      {/* 中のリンクは j/k の列から外す(件数に比例して保存ボタンが遠くなる)。Tab と札(f)では届く */}
+      {unexplained.length > 0 && (
+        <p data-secondary className="rounded-md bg-red-50 px-3 py-2 text-xs leading-relaxed text-red-800">
+          まだ説明できない概念が {unexplained.length} 件:{' '}
+          {unexplained.map((c, i) => (
+            <span key={c.id}>
+              {i > 0 && '・'}
+              <Link to={`/concepts/${c.id}`} className="underline">
+                {c.name || '(無名)'}
+              </Link>
+            </span>
+          ))}
+          <br />
+          この報告のあと「これ何?」と聞かれたら答えられない。先に埋めるか、
+          正直に「理解が追いついていない」と懸念に書く。
+        </p>
+      )}
 
       {empties.length > 0 && (
         <p className="rounded-md bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">

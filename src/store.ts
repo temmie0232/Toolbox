@@ -4,6 +4,7 @@ import { deleteImages, memoImageFiles } from './lib/memoImages'
 import { deleteRecording, loadData, saveData } from './storage'
 import {
   EMPTY_SUBMIT_CHECK,
+  type Concept,
   type Meeting,
   type Memo,
   type MinuteBlock,
@@ -20,6 +21,7 @@ export interface StoreState {
   tasks: Task[]
   memos: Memo[]
   meetings: Meeting[]
+  concepts: Concept[]
   /** 最後にJSONバックアップを書き出した日時。長く空くと印を出す */
   lastBackupAt?: string
 }
@@ -29,6 +31,7 @@ let state: StoreState = {
   tasks: [],
   memos: [],
   meetings: [],
+  concepts: [],
 }
 const listeners = new Set<() => void>()
 
@@ -57,7 +60,7 @@ let saveChain: Promise<unknown> = Promise.resolve()
 function queueSave(): Promise<void> {
   // 実行時点の最新stateを書くので、連続操作は自然にまとめられる
   const run = saveChain.then(() =>
-    saveData(state.tasks, state.memos, state.meetings, state.lastBackupAt),
+    saveData(state.tasks, state.memos, state.meetings, state.concepts, state.lastBackupAt),
   )
   // 失敗は画面のどこにいても見えるように、グローバルに記録する
   // (自動保存化により、画面遷移後に失敗が返ってくることがあるため)
@@ -85,6 +88,7 @@ type Draft = {
   tasks: Task[]
   memos: Memo[]
   meetings: Meeting[]
+  concepts: Concept[]
 }
 
 /**
@@ -96,11 +100,13 @@ async function commit(update: (draft: Draft) => Partial<Draft>): Promise<void> {
     tasks: state.tasks,
     memos: state.memos,
     meetings: state.meetings,
+    concepts: state.concepts,
   })
   set({
     tasks: next.tasks ?? state.tasks,
     memos: next.memos ?? state.memos,
     meetings: next.meetings ?? state.meetings,
+    concepts: next.concepts ?? state.concepts,
   })
   await queueSave()
 }
@@ -122,6 +128,7 @@ export async function reload(): Promise<void> {
       tasks: data.tasks,
       memos: data.memos,
       meetings: data.meetings,
+      concepts: data.concepts,
       lastBackupAt: data.lastBackupAt,
     })
   } catch (e) {
@@ -182,11 +189,12 @@ export function updateTaskWith(
 }
 
 export function removeTask(id: string): Promise<void> {
-  // 紐付いていたメモや議事録のTODOは消さず、紐付けだけ外す。
+  // 紐付いていたメモ・概念や議事録のTODOは消さず、紐付けだけ外す。
   // 外し忘れると、そのTODOは「タスクを開く」が死んだまま二度と変換できなくなる
-  return commit(({ tasks, memos, meetings }) => ({
+  return commit(({ tasks, memos, meetings, concepts }) => ({
     tasks: tasks.filter((t) => t.id !== id),
     memos: memos.map((m) => (m.taskId === id ? { ...m, taskId: undefined } : m)),
+    concepts: concepts.map((c) => (c.taskId === id ? { ...c, taskId: undefined } : c)),
     meetings: meetings.map((meeting) =>
       meeting.blocks.some((b) => b.taskId === id)
         ? {
@@ -196,6 +204,45 @@ export function removeTask(id: string): Promise<void> {
         : meeting,
     ),
   }))
+}
+
+// ---- 概念(わからない言葉の受信箱) ----
+
+/**
+ * 作業中のキャプチャは名前だけ。箱を埋めるのはすきま時間の仕事なので、
+ * 放り込む瞬間のコストを最小にする。
+ */
+export async function createConcept(input: { name: string; taskId?: string }): Promise<Concept> {
+  const timestamp = now()
+  const concept: Concept = {
+    id: newId(),
+    name: input.name.trim(),
+    taskId: input.taskId || undefined,
+    briefing: '',
+    explanation: '',
+    gaps: '',
+    status: 'captured',
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
+  await commit(({ concepts }) => ({ concepts: [...concepts, concept] }))
+  return concept
+}
+
+export function updateConceptWith(
+  id: string,
+  makePatch: (concept: Concept) => Partial<Omit<Concept, 'id' | 'createdAt'>>,
+): Promise<void> {
+  return commit(({ concepts }) => {
+    const current = concepts.find((c) => c.id === id)
+    if (!current) return {}
+    const next: Concept = { ...current, ...makePatch(current), updatedAt: now() }
+    return { concepts: concepts.map((c) => (c.id === id ? next : c)) }
+  })
+}
+
+export function removeConcept(id: string): Promise<void> {
+  return commit(({ concepts }) => ({ concepts: concepts.filter((c) => c.id !== id) }))
 }
 
 // ---- 報告 ----
@@ -389,12 +436,13 @@ export function replaceAllData(
   tasks: Task[],
   memos: Memo[],
   meetings: Meeting[],
+  concepts: Concept[],
 ): Promise<void> {
-  return commit(() => ({ tasks, memos, meetings }))
+  return commit(() => ({ tasks, memos, meetings, concepts }))
 }
 
 export function clearAllData(): Promise<void> {
-  return commit(() => ({ tasks: [], memos: [], meetings: [] }))
+  return commit(() => ({ tasks: [], memos: [], meetings: [], concepts: [] }))
 }
 
 /** バックアップを書き出した(または読み込んだ)ことを記録する */
