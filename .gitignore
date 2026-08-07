@@ -21,3 +21,6 @@ pnpm-debug.log*
 # アプリのバックアップ書き出し(個人データなので追跡しない)
 backup/
 *.tool-backup.json
+
+# 個人の作業日誌(コミットしない)
+work/

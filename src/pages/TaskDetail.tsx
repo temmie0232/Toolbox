@@ -16,9 +16,11 @@ import { useNumberShortcuts, useSaveShortcut, useShortcuts } from '../lib/useSho
 import { registerFlush, removeTask, updateTaskWith, useStore } from '../store'
 import {
   MEMO_TYPE_LABEL,
+  REPORT_KIND_LABEL,
   TASK_STATUS_LABEL,
   TASK_STATUS_ORDER,
   needsConfirmation,
+  reportSummary,
   type Memo,
   type SubmitCheck,
   type Task,
@@ -75,6 +77,7 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
   const [purpose, setPurpose] = useState(task.purpose)
   const [deliverable, setDeliverable] = useState(task.deliverable)
   const [deadline, setDeadline] = useState(task.deadline ?? '')
+  const [notes, setNotes] = useState(task.notes ?? '')
   const [newQuestion, setNewQuestion] = useState('')
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
@@ -83,7 +86,8 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
     title !== task.title ||
     purpose !== task.purpose ||
     deliverable !== task.deliverable ||
-    deadline !== (task.deadline ?? '')
+    deadline !== (task.deadline ?? '') ||
+    notes !== (task.notes ?? '')
 
   /** 保存に失敗したら必ず画面に出す。黙って消えるのが一番まずい */
   const run = useCallback(async (work: () => Promise<void>) => {
@@ -98,8 +102,8 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
   }, [])
 
   // ---- テキスト欄は自動保存。保存ボタンを意識させない ----
-  const latest = useRef({ title, purpose, deliverable, deadline })
-  latest.current = { title, purpose, deliverable, deadline }
+  const latest = useRef({ title, purpose, deliverable, deadline, notes })
+  latest.current = { title, purpose, deliverable, deadline, notes }
   const taskRef = useRef(task)
   taskRef.current = task
 
@@ -110,7 +114,8 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
       v.title === t.title &&
       v.purpose === t.purpose &&
       v.deliverable === t.deliverable &&
-      v.deadline === (t.deadline ?? '')
+      v.deadline === (t.deadline ?? '') &&
+      v.notes === (t.notes ?? '')
     ) {
       return Promise.resolve(true)
     }
@@ -120,6 +125,7 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
         purpose: v.purpose,
         deliverable: v.deliverable,
         deadline: v.deadline || undefined,
+        notes: v.notes || undefined,
       })),
     )
   }, [run])
@@ -129,7 +135,7 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
     if (!dirty) return
     const timer = setTimeout(() => void flush(), 700)
     return () => clearTimeout(timer)
-  }, [title, purpose, deliverable, deadline, dirty, flush])
+  }, [title, purpose, deliverable, deadline, notes, dirty, flush])
 
   // 打ちっぱなしだと上のデバウンスは延び続けるので、書きかけがある間は2秒ごとにも書く
   useEffect(() => {
@@ -169,16 +175,23 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
     remove: () => run(() => removeTask(task.id)).then((ok) => void (ok && onDeleted())),
   })
 
+  // 報告を書きに行く。書きかけの自動保存は流してから移る(戻る操作と同じ)
+  const openNewReport = useCallback(() => {
+    void flush()
+    navigate(`/tasks/${task.id}/reports/new`)
+  }, [flush, navigate, task.id])
+
   const shortcuts = useMemo(
     () => ({
       Escape: leave,
       h: leave,
-      // vim風: a(append)で疑問点の追加欄へ、cで確認文コピー
+      // vim風: a(append)で疑問点の追加欄へ、cで確認文コピー、sで報告(submit)
       a: () => enterInsert(questionInputRef.current),
       c: () => void copyRef.current?.(),
+      s: openNewReport,
       d: del.press,
     }),
-    [leave, enterInsert, del.press],
+    [leave, enterInsert, openNewReport, del.press],
   )
   useShortcuts(shortcuts)
 
@@ -317,6 +330,20 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
           </div>
         </Field>
 
+        <Field
+          label="作業メモ"
+          hint="走り書き・経緯・作業ログ。整理して考えるときや画像は下の紐付きメモで"
+          htmlFor="notes"
+        >
+          <TextArea
+            id="notes"
+            className="box-input"
+            rows={4}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
+        </Field>
+
         {error && <p className="text-sm text-red-600">{error}</p>}
       </div>
 
@@ -417,6 +444,47 @@ function TaskDetailBody({ task, linkedMemos, onDeleted }: BodyProps) {
             完了にする
           </button>
         )}
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-neutral-900">
+            報告{' '}
+            <span className="font-normal text-neutral-500">— 30%確認・完了報告の骨格を埋める</span>
+          </h2>
+          <Link
+            to={`/tasks/${task.id}/reports/new`}
+            className="text-sm text-blue-600 hover:underline"
+            title="報告を書く(s)"
+          >
+            + 報告を書く
+          </Link>
+        </div>
+        <ul className="divide-y divide-neutral-100 border-y border-neutral-100">
+          {(task.reports ?? []).map((report) => (
+            <li key={report.id}>
+              <Link
+                to={`/tasks/${task.id}/reports/${report.id}`}
+                className="flex gap-3 px-1 py-2 hover:bg-neutral-50"
+              >
+                <span className="w-24 shrink-0 text-xs text-neutral-500">
+                  {REPORT_KIND_LABEL[report.kind]}
+                </span>
+                <span className="flex-1 truncate text-sm text-neutral-800">
+                  {reportSummary(report)}
+                </span>
+                <span className="shrink-0 text-xs text-neutral-400">
+                  {formatDateTime(report.createdAt)}
+                </span>
+              </Link>
+            </li>
+          ))}
+          {(task.reports ?? []).length === 0 && (
+            <li className="px-1 py-2 text-sm text-neutral-400">
+              まだありません。上司へ報告する前に、ここで抜け漏れを潰す。
+            </li>
+          )}
+        </ul>
       </section>
 
       <section className="space-y-3">

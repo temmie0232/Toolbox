@@ -31,6 +31,41 @@ export interface SubmitCheck {
   nextActionClear: boolean
 }
 
+/** 報告の種類。30%時点の方向性確認と、終わったあとの結果報告では話す中身が違う */
+export type ReportKind = 'progress' | 'final'
+
+export const REPORT_KIND_LABEL: Record<ReportKind, string> = {
+  progress: '中間報告',
+  final: '完了報告',
+}
+
+/**
+ * 上司への報告1回分。箱を上から埋めると、そのまま報告で話す順になる。
+ * 空の箱は「まだ考えていない死角」として見せるのが役目なので、
+ * 該当が無い箱には「なし」と書いて空欄と区別する。
+ * 種類を切り替えても書いた中身は消さない(メモのテンプレ切替と同じ)。
+ */
+export interface Report {
+  id: string
+  kind: ReportKind
+  /** 結論1行。中間=いまどこまで来たか / 完了=どうなったか */
+  conclusion: string
+  /** 結果。できているもの・どこを見れば確認できるか */
+  result: string
+  /** これからの方針(中間でのみ表示) */
+  plan: string
+  /** 指示に無かった自分の判断とその理由。黙って仕様と違うことをした事故を防ぐ */
+  decisions: string
+  /** 確認した範囲。テスト・チェックをどこまでやったか(完了でのみ表示) */
+  verified: string
+  /** 残課題・懸念。言いそびれて後で発覚するのを防ぐ */
+  concerns: string
+  /** 相手にしてほしいこと。報告したのに何も進まないのを防ぐ */
+  requests: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface Task {
   id: string
   title: string
@@ -43,6 +78,14 @@ export interface Task {
   questions: Question[]
   status: TaskStatus
   submitCheck: SubmitCheck
+  /** 上司への報告の下書き(30%確認〜完了まで複数積める)。後から足したので古いデータには無い */
+  reports?: Report[]
+  /**
+   * 作業メモ。メモを1件立てるほどでもない走り書き(経緯・作業ログ)をタスクに直接残す。
+   * 整理された思考(空雨傘・結論ファースト)や画像は、従来どおり紐付きメモの役目。
+   * 後から足したので古いデータには無い
+   */
+  notes?: string
   createdAt: string
   updatedAt: string
 }
@@ -152,6 +195,11 @@ export const EMPTY_SUBMIT_CHECK: SubmitCheck = {
 /** 未解決の疑問が1件でもあれば「要確認」 */
 export function needsConfirmation(task: Task): boolean {
   return task.questions.some((q) => !q.resolved)
+}
+
+/** 一覧と削除確認に出す報告の1行要約 */
+export function reportSummary(report: Report): string {
+  return report.conclusion || '(結論未記入)'
 }
 
 /** 一覧に出す議事録の1行要約 */

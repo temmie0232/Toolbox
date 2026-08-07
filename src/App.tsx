@@ -8,6 +8,7 @@ import { MeetingList } from './pages/MeetingList'
 import { MeetingNew } from './pages/MeetingNew'
 import { MemoDetail, MemoNew } from './pages/MemoEdit'
 import { MemoList } from './pages/MemoList'
+import { ReportDetail, ReportNew } from './pages/ReportEdit'
 import { Settings } from './pages/Settings'
 import { TaskDetail } from './pages/TaskDetail'
 import { TaskList } from './pages/TaskList'
@@ -65,6 +66,8 @@ export function App() {
             <Route index element={<TaskList />} />
             <Route path="tasks/new" element={<TaskNew />} />
             <Route path="tasks/:id" element={<TaskDetail />} />
+            <Route path="tasks/:taskId/reports/new" element={<ReportNew />} />
+            <Route path="tasks/:taskId/reports/:reportId" element={<ReportDetail />} />
             <Route path="memos" element={<MemoList />} />
             <Route path="memos/new" element={<MemoNew />} />
             <Route path="memos/:id" element={<MemoDetail />} />

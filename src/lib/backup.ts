@@ -9,6 +9,7 @@ import {
   type MemoType,
   type MinuteBlock,
   type MinuteKind,
+  type Report,
   type Task,
   type TaskStatus,
 } from '../types'
@@ -134,6 +135,25 @@ export function parseBackup(text: string): {
         conclusionIn10s: bool(t.submitCheck?.conclusionIn10s),
         nextActionClear: bool(t.submitCheck?.nextActionClear),
       },
+      // 報告は後から足した項目なので、無いバックアップも受け付ける
+      reports: Array.isArray(t.reports)
+        ? t.reports
+            .filter((r): r is Report => typeof (r as Partial<Report>)?.id === 'string')
+            .map((r) => ({
+              id: r.id,
+              kind: r.kind === 'final' ? 'final' : 'progress',
+              conclusion: str(r.conclusion),
+              result: str(r.result),
+              plan: str(r.plan),
+              decisions: str(r.decisions),
+              verified: str(r.verified),
+              concerns: str(r.concerns),
+              requests: str(r.requests),
+              createdAt: str(r.createdAt, new Date().toISOString()),
+              updatedAt: str(r.updatedAt, str(r.createdAt, new Date().toISOString())),
+            }))
+        : undefined,
+      notes: optionalStr(t.notes),
       createdAt: str(t.createdAt, new Date().toISOString()),
       updatedAt: str(t.updatedAt, str(t.createdAt, new Date().toISOString())),
     }

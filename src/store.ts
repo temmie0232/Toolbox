@@ -8,6 +8,7 @@ import {
   type Memo,
   type MinuteBlock,
   type MinuteKind,
+  type Report,
   type Task,
 } from './types'
 
@@ -194,6 +195,40 @@ export function removeTask(id: string): Promise<void> {
           }
         : meeting,
     ),
+  }))
+}
+
+// ---- 報告 ----
+
+export type NewReportInput = Omit<Report, 'id' | 'createdAt' | 'updatedAt'>
+
+export async function addReport(taskId: string, input: NewReportInput): Promise<Report> {
+  const timestamp = now()
+  const report: Report = {
+    ...input,
+    id: newId(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
+  await updateTaskWith(taskId, (t) => ({ reports: [...(t.reports ?? []), report] }))
+  return report
+}
+
+export function updateReport(
+  taskId: string,
+  reportId: string,
+  patch: Partial<Omit<Report, 'id' | 'createdAt'>>,
+): Promise<void> {
+  return updateTaskWith(taskId, (t) => ({
+    reports: (t.reports ?? []).map((r) =>
+      r.id === reportId ? { ...r, ...patch, updatedAt: now() } : r,
+    ),
+  }))
+}
+
+export function removeReport(taskId: string, reportId: string): Promise<void> {
+  return updateTaskWith(taskId, (t) => ({
+    reports: (t.reports ?? []).filter((r) => r.id !== reportId),
   }))
 }
 

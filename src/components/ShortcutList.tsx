@@ -60,7 +60,7 @@ export const SHORTCUT_GROUPS: Group[] = [
       { keys: ['Shift', 'Enter'], label: '次の箱へ(メモ・タスク)' },
       { keys: ['Enter'], label: '改行。1行の箱では次の箱へ(議事録は行の確定)' },
       { keys: ['Ctrl', '1〜4'], label: 'ステータス(タスク詳細)' },
-      { keys: ['Ctrl', '1〜3'], label: 'テンプレ(メモ) / 種別(議事録)' },
+      { keys: ['Ctrl', '1〜3'], label: 'テンプレ(メモ) / 種別(議事録) / 報告の種類(1〜2)' },
       { keys: ['Ctrl', 'V'], label: 'スクリーンショットをその行に貼る(メモ)' },
       { keys: ['Tab'], label: '次の箱へ移動' },
     ],
@@ -70,6 +70,8 @@ export const SHORTCUT_GROUPS: Group[] = [
     items: [
       { keys: ['a'], label: '追加欄へ入って書き始める' },
       { keys: ['c'], label: '未解決の疑問点を確認用にコピー(タスク詳細)' },
+      { keys: ['s'], label: '上司への報告を書く(タスク詳細)' },
+      { keys: ['c'], label: '報告文を貼れる形でコピー(報告)' },
       { keys: ['h'], label: '一覧へ戻る(Escでも可)' },
       { keys: ['Esc'], label: '打ちかけを消す → もう一度で一覧へ(議事録)' },
     ],
